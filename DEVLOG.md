@@ -221,3 +221,13 @@ Config: `monitoring/prometheus.yml`, `monitoring/grafana/provisioning/` for data
 All endpoints now use `async with pool.acquire() as conn` for proper connection lifecycle management. Query parameter style changed from `%s` (psycopg2) to `$1, $2` (asyncpg). Removed the old `_conn` global in favor of `_pool`.
 
 Updated test mocks from psycopg2's cursor pattern to asyncpg's pool/connection pattern using `AsyncMock`. All 28 tests passing.
+
+## 2026-03-07 — MLflow model registry
+
+### What changed
+
+**Model registration in embed pipeline.** Both `run_comparison` and `run_embedding` now call `mlflow.sentence_transformers.log_model()` after training/evaluation, registering models under names like `pubmed-minilm` and `pubmed-pubmedbert`. Each run creates a new version automatically.
+
+**Registry management script.** `src/embeddings/registry.py` provides three commands: `list` (show all registered models and versions), `promote` (set the `@production` alias on a version), and `load` (pull the production model from the registry). Uses MLflow's alias system instead of the deprecated stage-based transitions.
+
+**API loads from registry.** When `MLFLOW_TRACKING_URI` is set, the API tries to load models from the registry (`models:/pubmed-minilm@production`) before falling back to HuggingFace. This means model swaps only require promoting a new version in the registry, no code deploy needed. Docker Compose passes `MLFLOW_TRACKING_URI=http://mlflow:5000` to the API service.

@@ -58,14 +58,16 @@ python -m pytest tests/ -v
 - **ONNX export + INT8 quantization**: 5.3x inference speedup (4.4ms → 0.84ms) with negligible quality loss
 - Evaluation uses MeSH term overlap between query intent and top-k results as a relevance proxy (8 queries, graded 0-3)
 - Batch processing with progress tracking; only embeds papers that don't already have embeddings for the target model
+- **MLflow model registry**: models registered as versioned artifacts after training, with alias-based promotion (`@production`). Registry management CLI for listing, promoting, and loading models
 
-### 3. Serving Layer (FastAPI)
+### 3. Serving Layer (FastAPI + asyncpg)
 - `POST /search` — semantic search with optional date range and MeSH term filters; supports model selection at query time
 - `GET /paper/{pmid}` — retrieve a specific paper's metadata and abstract
 - `GET /similar/{pmid}` — find semantically similar papers using an existing paper's embedding
 - `GET /health` — health check with paper count and loaded models
 - `GET /metrics` — Prometheus-compatible metrics (request counts, latency, per-endpoint breakdown)
-- Lazy model loading: models load on first request and are cached in memory (keeps startup fast for health checks)
+- Lazy model loading: tries MLflow registry first (if configured), falls back to HuggingFace. Models cached in memory
+- Async DB layer with asyncpg connection pool (configurable min/max connections)
 
 ### 4. MCP Server
 - Wraps the FastAPI endpoints as MCP tools for LLM integration
@@ -121,7 +123,8 @@ pubmed-ml-platform/
 │   │   ├── finetune.py           # Contrastive fine-tuning on MeSH pairs
 │   │   ├── cross_encoder.py      # Cross-encoder re-ranker (two-stage pipeline)
 │   │   ├── distill.py            # Knowledge distillation (PubMedBERT → MiniLM)
-│   │   └── onnx_export.py        # ONNX export + INT8 quantization
+│   │   ├── onnx_export.py        # ONNX export + INT8 quantization
+│   │   └── registry.py           # MLflow model registry management
 │   ├── serving/
 │   │   └── api.py                # FastAPI application
 │   └── mcp/

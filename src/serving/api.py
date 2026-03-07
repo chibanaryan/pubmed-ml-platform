@@ -26,10 +26,15 @@ logger = logging.getLogger(__name__)
 # --- Config ---
 
 DB_URL = os.environ.get("DATABASE_URL", "postgresql://pubmed:pubmed@localhost:5432/pubmed")
+MLFLOW_URI = os.environ.get("MLFLOW_TRACKING_URI", "")
 DEFAULT_MODEL = "all-MiniLM-L6-v2"
 MODEL_DIMS = {
     "all-MiniLM-L6-v2": 384,
     "pritamdeka/PubMedBERT-mnli-snli-scinli-scitail-mednli-stsb": 768,
+}
+MLFLOW_REGISTRY_NAMES = {
+    "all-MiniLM-L6-v2": "pubmed-minilm",
+    "pritamdeka/PubMedBERT-mnli-snli-scinli-scitail-mednli-stsb": "pubmed-pubmedbert",
 }
 POOL_MIN = int(os.environ.get("DB_POOL_MIN", "2"))
 POOL_MAX = int(os.environ.get("DB_POOL_MAX", "10"))
@@ -86,7 +91,19 @@ def _get_model(model_name: str) -> SentenceTransformer:
     if model_name not in MODEL_DIMS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
     if model_name not in _models:
-        logger.info(f"Loading model {model_name} (on-demand)...")
+        # Try loading from MLflow registry first (production alias)
+        registry_name = MLFLOW_REGISTRY_NAMES.get(model_name)
+        if MLFLOW_URI and registry_name:
+            try:
+                import mlflow
+                mlflow.set_tracking_uri(MLFLOW_URI)
+                model_uri = f"models:/{registry_name}@production"
+                logger.info(f"Loading model from MLflow registry: {model_uri}")
+                _models[model_name] = mlflow.sentence_transformers.load_model(model_uri)
+                return _models[model_name]
+            except Exception as e:
+                logger.warning(f"Failed to load from registry, falling back to HuggingFace: {e}")
+        logger.info(f"Loading model {model_name} from HuggingFace (on-demand)...")
         _models[model_name] = SentenceTransformer(model_name)
     return _models[model_name]
 

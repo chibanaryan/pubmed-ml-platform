@@ -30,6 +30,6 @@
 ## Infrastructure
 
 - [x] **Grafana dashboard.** Prometheus scrapes `/metrics` every 15s, Grafana auto-provisions with a pre-built dashboard showing request rate, latency, errors, and model status. Grafana at :3000, Prometheus at :9090.
-- [ ] **Model registry with MLflow.** Register embedding models as versioned artifacts. Add a promotion workflow (staging → production) so model swaps don't require a code deploy.
+- [x] **Model registry with MLflow.** Embed pipeline registers models as versioned artifacts after training. Registry management script (`registry.py`) supports listing models, promoting versions via aliases (`@production`), and loading from the registry. API falls back to HuggingFace if no registry model is available.
 - [x] **Async DB connections.** Replaced psycopg2 with asyncpg. Connection pool (min 2, max 10) created at startup via lifespan. All endpoints use `pool.acquire()` async context manager. Tests updated with asyncpg-compatible mocks.
 - [ ] **A/B testing for models.** Route a percentage of traffic to a new model, compare NDCG and latency in production. Log which model served each request.

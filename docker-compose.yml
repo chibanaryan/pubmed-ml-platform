@@ -72,6 +72,7 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://pubmed:pubmed@postgres:5432/pubmed
+      MLFLOW_TRACKING_URI: http://mlflow:5000
     volumes:
       - ./src:/app/src
       - model_cache:/root/.cache
