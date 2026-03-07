@@ -54,10 +54,12 @@ python -m pytest tests/ -v
 - Batch processing with progress tracking; only embeds papers that don't already have embeddings for the target model
 
 ### 3. Serving Layer (FastAPI)
-- `POST /search` — semantic search with optional date range and MeSH term filters
+- `POST /search` — semantic search with optional date range and MeSH term filters; supports model selection at query time
 - `GET /paper/{pmid}` — retrieve a specific paper's metadata and abstract
 - `GET /similar/{pmid}` — find semantically similar papers using an existing paper's embedding
-- `GET /health` — health check with paper count
+- `GET /health` — health check with paper count and loaded models
+- `GET /metrics` — Prometheus-compatible metrics (request counts, latency, per-endpoint breakdown)
+- On-demand model loading: MiniLM at startup, PubMedBERT loaded on first request and cached
 
 ### 4. MCP Server
 - Wraps the FastAPI endpoints as MCP tools for LLM integration
@@ -66,17 +68,19 @@ python -m pytest tests/ -v
 - Formats results for LLM consumption with truncated abstracts, author lists, and relevance scores
 
 ### 5. Infrastructure
-- **Docker Compose** for local development (Postgres+pgvector, MLflow, Airflow, FastAPI)
+- **Docker Compose** for local development (Postgres+pgvector, MLflow, Airflow with separate metadata DB, FastAPI)
 - **Kubernetes manifests** for deployment (namespace, PVCs, deployments with health probes, services)
-- **pgvector** for vector similarity search with IVFFlat indexing
+- **pgvector** with HNSW expression indexes for vector similarity search
+- **Multi-stage Docker build** to keep build dependencies out of the runtime image
+- **GitHub Actions CI** with ruff linting and pytest
 
 ## Design Decisions
 
-**pgvector over a dedicated vector DB.** Pinecone or Weaviate would add a managed service dependency for marginal benefit at this scale. pgvector keeps everything in one database, simplifies joins between paper metadata and embeddings, and avoids the operational overhead of syncing two data stores. The tradeoff is that pgvector's IVFFlat index is less sophisticated than HNSW-based alternatives, but for sub-100K vectors the performance difference is negligible.
+**pgvector over a dedicated vector DB.** Pinecone or Weaviate would add a managed service dependency for marginal benefit at this scale. pgvector keeps everything in one database, simplifies joins between paper metadata and embeddings, and avoids the operational overhead of syncing two data stores. HNSW indexes achieve 3.9ms search latency at 40K vectors.
 
 **Untyped vector column.** The embeddings table uses `vector` without a dimension constraint, which lets MiniLM (384-dim) and PubMedBERT (768-dim) coexist in the same table. The alternative was separate tables per model, but a single table with a `model_name` discriminator is simpler and makes the comparison pipeline cleaner. The cost is that pgvector can't enforce dimension consistency at the schema level.
 
-**MeSH overlap as an evaluation metric.** Without hand-labeled relevance judgments, MeSH terms serve as a structured proxy for topical relevance. If a query about "creatine supplementation" retrieves papers tagged with the Creatine and Dietary Supplements MeSH headings, that's a reasonable signal. It's not a substitute for proper NDCG evaluation, but it's something you can compute automatically and it differentiates between models that retrieve topically relevant papers and those that just return high-similarity noise.
+**Graded relevance evaluation via MeSH terms.** Without hand-labeled relevance judgments, MeSH terms serve as a structured proxy for topical relevance. The evaluation harness defines high/medium/low relevance MeSH terms per query and computes NDCG@5/10 with a 0-3 graded relevance scale. At 40K papers, MiniLM achieves mean NDCG@5 of 0.83 and NDCG@10 of 0.91.
 
 **Airflow for orchestration.** For a personal project this is arguably overkill. A cron job calling a Python script would work fine. But the point is demonstrating familiarity with production orchestration patterns: incremental state tracking, task dependencies, retry policies, and monitoring via the Airflow UI. The DAG is structured so each category runs independently, which would parallelize naturally at higher scale.
 
@@ -105,7 +109,8 @@ pubmed-ml-platform/
 │   ├── ingestion/
 │   │   └── pubmed_client.py      # PubMed E-utilities API client
 │   ├── embeddings/
-│   │   └── embed_pipeline.py     # Embedding generation + MLflow tracking
+│   │   ├── embed_pipeline.py     # Embedding generation + MLflow tracking
+│   │   └── evaluate.py           # NDCG evaluation harness
 │   ├── serving/
 │   │   └── api.py                # FastAPI application
 │   └── mcp/
@@ -119,9 +124,12 @@ pubmed-ml-platform/
 │   └── mlflow.yaml
 ├── tests/
 │   ├── test_pubmed_client.py
-│   └── test_api.py
+│   ├── test_api.py
+│   └── test_evaluate.py
+├── .github/workflows/ci.yml
 ├── docker-compose.yml
 ├── Dockerfile
+├── Makefile
 ├── pyproject.toml
 ├── DEVLOG.md
 └── TODO.md

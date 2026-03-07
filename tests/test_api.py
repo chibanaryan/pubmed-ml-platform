@@ -93,6 +93,43 @@ class TestSearchEndpoint:
         assert "latency_ms" in data
 
 
+    def test_search_rejects_unknown_model(self, client):
+        test_client, _, _ = client
+        resp = test_client.post("/search", json={"query": "test", "model_name": "nonexistent-model"})
+        assert resp.status_code == 400
+
+
+class TestMetricsEndpoint:
+    def test_metrics_returns_prometheus_format(self, client):
+        test_client, _, _ = client
+        resp = test_client.get("/metrics")
+        assert resp.status_code == 200
+        assert "text/plain" in resp.headers["content-type"]
+        body = resp.text
+        assert "pubmed_requests_total" in body
+        assert "pubmed_models_loaded" in body
+        assert "pubmed_search_latency_ms_avg" in body
+
+    def test_metrics_tracks_requests(self, client):
+        test_client, mock_conn, mock_model = client
+        import numpy as np
+        import src.serving.api as api_module
+
+        # Reset metrics
+        api_module._metrics["requests_total"] = 0
+        api_module._metrics["requests_by_endpoint"] = {}
+
+        mock_model.encode.return_value = np.zeros(384)
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = []
+        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+
+        test_client.post("/search", json={"query": "test"})
+        resp = test_client.get("/metrics")
+        assert 'pubmed_requests_by_endpoint{endpoint="search"} 1' in resp.text
+
+
 class TestPaperEndpoint:
     def test_get_paper_not_found(self, client):
         test_client, mock_conn, _ = client
