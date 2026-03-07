@@ -187,3 +187,17 @@ The distillation transferred some domain-specific knowledge (HIIT +0.19, AI ethi
 - Neon free tier hit 512MB storage limit after storing 30K distilled embeddings (already had 40K base + 40K fine-tuned). Deleted the fine-tuned embeddings to make room, but Neon's auto-vacuum hadn't reclaimed physical space yet. Evaluated with 30K embeddings (still a representative sample).
 
 **Takeaway:** Similarity-based distillation is a blunt tool. The teacher's pairwise similarity distribution captures document relationships, but it doesn't encode which relationships matter for retrieval. Contrastive fine-tuning with task-specific pairs (MeSH overlap) gives the model more directed signal about what "relevant" means in this domain.
+
+## 2026-03-07 — Custom embedding model from scratch
+
+### What changed
+
+**Built a sentence embedding model from bert-base-uncased.** Architecture: Transformer + mean pooling (768-dim output). Trained on 10K MeSH-based pairs with `MultipleNegativesRankingLoss`, 1 epoch, batch size 32, max_seq_length 128. Training took ~8 min on MPS, loss converged to 1.17.
+
+**Blocked by Neon storage limits.** The 768-dim BERT embeddings are 2x larger per row than MiniLM's 384-dim. With 40K base MiniLM embeddings already stored, there wasn't room for another 40K at 768-dim within Neon's 512MB free tier. The HNSW index also rejects 768-dim inserts because only the 384-dim expression index exists (the 768-dim index was dropped earlier).
+
+A query-only comparison (encoding queries with BERT and searching against MiniLM embeddings) is meaningless here because the embedding spaces are completely incompatible. Proper evaluation requires storing the BERT embeddings and querying against them.
+
+**Takeaway:** bert-base-uncased is ~4x slower than MiniLM (110M vs 22M params) and produces 768-dim embeddings that are harder to store and index. For a production search system, MiniLM's architecture (small, fast, 384-dim) is clearly the better starting point. Training from a larger base model only makes sense if you need the extra capacity and have the infrastructure to support it.
+
+**Neon storage issue:** Deleted rows don't immediately free disk space. Neon's auto-vacuum reclaims space asynchronously, but in practice it took longer than expected. Multiple DELETEs of 30K-40K embedding rows didn't free enough space for new inserts within the session.
