@@ -27,7 +27,7 @@
 
 - [x] **Fine-tune MiniLM on PubMed abstracts.** Contrastive learning with 100K MeSH-based pairs using `MultipleNegativesRankingLoss`. NDCG@5 improved from 0.83 to 0.86, with biggest gains on previously weak queries (sleep deprivation +0.19, HIIT +0.13).
 - [x] **Train a cross-encoder re-ranker.** Two-stage pipeline: bi-encoder retrieves top-50, cross-encoder re-ranks to top-10. Trained on 20K MeSH-derived examples. NDCG@5 improved from 0.83 to 0.92 (+0.09). HIIT query went from 0.59 to 1.00. Adds ~272ms latency per query.
-- [ ] **ONNX export + quantization.** Export the embedding model to ONNX, then quantize to INT8. Benchmark inference latency and measure any NDCG degradation. Goal: cut per-query encoding time without hurting retrieval quality.
+- [x] **ONNX export + quantization.** Exported MiniLM to ONNX, quantized to INT8. 5.3x speedup (4.4ms → 0.84ms per query) with only 0.017 NDCG@5 degradation. ONNX FP32 is lossless.
 - [ ] **Distill PubMedBERT into a smaller model.** Use PubMedBERT (768-dim) as a teacher to train a smaller student model (384-dim or 256-dim) that captures domain knowledge in fewer dimensions. Requires writing a distillation loss (KL divergence on similarity distributions).
 - [ ] **Custom embedding model from scratch.** Initialize from `bert-base-uncased`, train a sentence embedding model on PubMed data using in-batch negatives. Full control over tokenizer, pooling strategy, and loss function. Compare against MiniLM to see what domain-specific pretraining buys you.
 
