@@ -201,3 +201,13 @@ A query-only comparison (encoding queries with BERT and searching against MiniLM
 **Takeaway:** bert-base-uncased is ~4x slower than MiniLM (110M vs 22M params) and produces 768-dim embeddings that are harder to store and index. For a production search system, MiniLM's architecture (small, fast, 384-dim) is clearly the better starting point. Training from a larger base model only makes sense if you need the extra capacity and have the infrastructure to support it.
 
 **Neon storage issue:** Deleted rows don't immediately free disk space. Neon's auto-vacuum reclaims space asynchronously, but in practice it took longer than expected. Multiple DELETEs of 30K-40K embedding rows didn't free enough space for new inserts within the session.
+
+## 2026-03-07 — Monitoring stack
+
+### What changed
+
+**Prometheus + Grafana.** Added to docker-compose. Prometheus scrapes the API's `/metrics` endpoint every 15 seconds. Grafana auto-provisions with a datasource pointing at Prometheus and a pre-built dashboard.
+
+Dashboard panels: request rate (total and per-endpoint), average search latency, error rate, models loaded, total requests/errors/searches as stat panels. All auto-provisioned from JSON so the dashboard survives container restarts.
+
+Config: `monitoring/prometheus.yml`, `monitoring/grafana/provisioning/` for datasource and dashboard provider, `monitoring/grafana/dashboards/pubmed-api.json` for the dashboard definition. Grafana at :3000 (admin/admin, anonymous read enabled), Prometheus at :9090.

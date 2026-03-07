@@ -19,10 +19,6 @@
 
 - [x] **Airflow DAG testing.** Triggered via CLI. Task pipeline works end to end. Rate limiting from concurrent runs handled by retry mechanism.
 
-## Remaining
-
-- [ ] **Add `.dockerignore`.** Exclude `.venv`, `.git`, `__pycache__`, etc. from Docker build context.
-
 ## PyTorch / Model Training
 
 - [x] **Fine-tune MiniLM on PubMed abstracts.** Contrastive learning with 100K MeSH-based pairs using `MultipleNegativesRankingLoss`. NDCG@5 improved from 0.83 to 0.86, with biggest gains on previously weak queries (sleep deprivation +0.19, HIIT +0.13).
@@ -33,7 +29,7 @@
 
 ## Infrastructure
 
-- [ ] **Grafana dashboard.** Wire up the `/metrics` endpoint to Prometheus + Grafana. Track request latency p50/p95, error rate, model load times, and embedding count growth over time.
+- [x] **Grafana dashboard.** Prometheus scrapes `/metrics` every 15s, Grafana auto-provisions with a pre-built dashboard showing request rate, latency, errors, and model status. Grafana at :3000, Prometheus at :9090.
 - [ ] **Model registry with MLflow.** Register embedding models as versioned artifacts. Add a promotion workflow (staging → production) so model swaps don't require a code deploy.
 - [ ] **Async DB connections.** Replace psycopg2 with asyncpg to match FastAPI's async model. Add connection pooling.
 - [ ] **A/B testing for models.** Route a percentage of traffic to a new model, compare NDCG and latency in production. Log which model served each request.

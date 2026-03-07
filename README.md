@@ -27,6 +27,8 @@ docker compose up -d
 # API at http://localhost:8000
 # MLflow UI at http://localhost:5001
 # Airflow UI at http://localhost:8080 (admin/admin)
+# Grafana at http://localhost:3000 (admin/admin)
+# Prometheus at http://localhost:9090
 
 # Run embedding model comparison
 docker compose exec api python -m src.embeddings.embed_pipeline --compare \
@@ -72,7 +74,7 @@ python -m pytest tests/ -v
 - Formats results for LLM consumption with truncated abstracts, author lists, and relevance scores
 
 ### 5. Infrastructure
-- **Docker Compose** for local development (Postgres+pgvector, MLflow, Airflow with separate metadata DB, FastAPI)
+- **Docker Compose** for local development (Postgres+pgvector, MLflow, Airflow with separate metadata DB, FastAPI, Prometheus, Grafana)
 - **Kubernetes manifests** for deployment (namespace, PVCs, deployments with health probes, services)
 - **pgvector** with HNSW expression indexes for vector similarity search
 - **CPU-only Docker image** with PyTorch installed from the CPU index (641MB vs 3.5GB with CUDA)
