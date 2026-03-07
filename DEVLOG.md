@@ -37,3 +37,26 @@ MiniLM retrieves papers with better MeSH term overlap and is faster. PubMedBERT 
 **Tests:** 14 passing — PubMed client XML parsing, date handling, rate limiting, API validation, endpoint behavior.
 
 **Infrastructure:** Docker Compose running Postgres+pgvector, MLflow, Airflow, FastAPI. K8s manifests written but not deployed. MCP server tested inside Docker, `.mcp.json` config created for Claude Code integration.
+
+## 2026-03-06 — Scaling and indexing
+
+### What changed
+
+**Scaled to full corpus:** Embedded all 9,693 papers with both MiniLM and PubMedBERT. PubMedBERT took ~10.5 minutes (13.7 papers/sec on CPU).
+
+**HNSW indexes:** IVFFlat doesn't work on untyped vector columns. Neither does HNSW directly. Solved with expression indexes using casts: `USING hnsw ((embedding::vector(384)) vector_cosine_ops)`. Required updating all API queries to cast both sides: `e.embedding::vector(384) <=> %s::vector(384)`. Latency dropped from ~80ms to ~7-22ms.
+
+**Full-corpus model comparison (9,693 papers):**
+
+| Metric | MiniLM | PubMedBERT |
+|--------|--------|------------|
+| Mean similarity | 0.584 | 0.600 |
+| MeSH overlap | **0.357** | 0.340 |
+| Latency | **7.0ms** | 10.1ms |
+
+MiniLM still wins on retrieval quality (MeSH overlap) and speed. The gap narrowed compared to the 974-paper run. PubMedBERT's top hits are sometimes more precisely targeted (e.g., it returns the creatine cognition review directly for the creatine query) but its overall top-10 is less consistently on-topic.
+
+**Other fixes:**
+- Added exponential backoff retry logic to `pubmed_client._get()` for 429 rate limit responses
+- Rewrote README with Design Decisions section explaining pgvector, untyped vectors, MeSH evaluation, Airflow, and MCP choices
+- Updated project structure in README to match actual files

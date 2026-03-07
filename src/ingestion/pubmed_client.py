@@ -56,12 +56,22 @@ class PubMedClient:
             time.sleep(self.min_interval - elapsed)
         self.last_request_time = time.time()
 
-    def _get(self, endpoint: str, params: dict) -> requests.Response:
-        self._throttle()
+    def _get(self, endpoint: str, params: dict, max_retries: int = 3) -> requests.Response:
         if self.api_key:
             params["api_key"] = self.api_key
         url = f"{BASE_URL}/{endpoint}"
-        resp = self.session.get(url, params=params, timeout=30)
+
+        for attempt in range(max_retries):
+            self._throttle()
+            resp = self.session.get(url, params=params, timeout=30)
+            if resp.status_code == 429:
+                wait = 2 ** attempt * 2
+                logger.warning(f"Rate limited (429), retrying in {wait}s (attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp
+
         resp.raise_for_status()
         return resp
 

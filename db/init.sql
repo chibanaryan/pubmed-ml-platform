@@ -23,17 +23,17 @@ CREATE TABLE IF NOT EXISTS embeddings (
     UNIQUE(pmid, model_name)
 );
 
--- IVFFlat index must be created AFTER data is loaded (needs rows to build clusters).
--- Run this manually once you have embeddings:
---   CREATE INDEX idx_embeddings_vector_384
---       ON embeddings USING ivfflat (embedding vector_cosine_ops)
---       WITH (lists = 100)
+-- Vector indexes: created AFTER data is loaded.
+-- Using HNSW with expression casts since the column is untyped (supports multiple dims).
+-- Queries must cast to match: e.embedding::vector(384) <=> query::vector(384)
+--
+--   CREATE INDEX idx_embeddings_hnsw_minilm
+--       ON embeddings USING hnsw ((embedding::vector(384)) vector_cosine_ops)
 --       WHERE model_name = 'all-MiniLM-L6-v2';
 --
---   CREATE INDEX idx_embeddings_vector_768
---       ON embeddings USING ivfflat (embedding vector_cosine_ops)
---       WITH (lists = 100)
---       WHERE model_name LIKE '%PubMedBERT%';
+--   CREATE INDEX idx_embeddings_hnsw_pubmedbert
+--       ON embeddings USING hnsw ((embedding::vector(768)) vector_cosine_ops)
+--       WHERE model_name = 'pritamdeka/PubMedBERT-mnli-snli-scinli-scitail-mednli-stsb';
 
 CREATE INDEX IF NOT EXISTS idx_embeddings_model
     ON embeddings(model_name);

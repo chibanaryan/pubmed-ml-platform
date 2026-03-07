@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 
 DB_URL = os.environ.get("DATABASE_URL", "postgresql://pubmed:pubmed@localhost:5432/pubmed")
 MODEL_NAME = "all-MiniLM-L6-v2"  # Switch after MLflow comparison
+MODEL_DIMS = {
+    "all-MiniLM-L6-v2": 384,
+    "pritamdeka/PubMedBERT-mnli-snli-scinli-scitail-mednli-stsb": 768,
+}
 
 # --- Models ---
 
@@ -121,14 +125,17 @@ async def search(req: SearchRequest):
 
     where_clause = " AND ".join(conditions)
 
+    dim = MODEL_DIMS.get(req.model_name, 384)
+    vec_cast = f"::vector({dim})"
+
     sql = f"""
         SELECT p.pmid, p.title, p.abstract, p.authors, p.journal,
                p.pub_date, p.mesh_terms,
-               1 - (e.embedding <=> %s::vector) as similarity
+               1 - (e.embedding{vec_cast} <=> %s::vector({dim})) as similarity
         FROM embeddings e
         JOIN papers p ON e.pmid = p.pmid
         WHERE {where_clause}
-        ORDER BY e.embedding <=> %s::vector
+        ORDER BY e.embedding{vec_cast} <=> %s::vector({dim})
         LIMIT %s
     """
     params = [query_embedding] + params + [query_embedding, req.top_k]
@@ -206,16 +213,17 @@ async def find_similar(
     embedding = row["embedding"]
 
     # Find similar papers (exclude self)
+    dim = MODEL_DIMS.get(model_name, 384)
     with _conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            """
+            f"""
             SELECT p.pmid, p.title, p.abstract, p.authors, p.journal,
                    p.pub_date, p.mesh_terms,
-                   1 - (e.embedding <=> %s::vector) as similarity
+                   1 - (e.embedding::vector({dim}) <=> %s::vector({dim})) as similarity
             FROM embeddings e
             JOIN papers p ON e.pmid = p.pmid
             WHERE e.model_name = %s AND e.pmid != %s
-            ORDER BY e.embedding <=> %s::vector
+            ORDER BY e.embedding::vector({dim}) <=> %s::vector({dim})
             LIMIT %s
             """,
             (embedding, model_name, pmid, embedding, top_k),
