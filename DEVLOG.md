@@ -60,3 +60,35 @@ MiniLM still wins on retrieval quality (MeSH overlap) and speed. The gap narrowe
 - Added exponential backoff retry logic to `pubmed_client._get()` for 429 rate limit responses
 - Rewrote README with Design Decisions section explaining pgvector, untyped vectors, MeSH evaluation, Airflow, and MCP choices
 - Updated project structure in README to match actual files
+
+## 2026-03-07 — Scale-up and NDCG evaluation
+
+### What changed
+
+**Scaled to ~40K papers.** Pulled 3 years of data, ~10K per category. Final count: 39,731 papers with MiniLM embeddings. PubMedBERT stays at 9,693 (embedding 30K more at ~14 papers/sec would take 35+ minutes on CPU, not worth it for a portfolio piece).
+
+**NDCG evaluation harness.** Built a proper evaluation system with graded relevance scoring (0-3 scale based on MeSH term overlap tiers: high/medium/low relevance terms per query). 8 evaluation queries covering all 5 categories plus cross-domain topics (sleep/cognition, gut/brain, resistance training for elderly).
+
+**Results at 39,731 papers (MiniLM):**
+
+| Query | NDCG@5 |
+|-------|--------|
+| Creatine + muscle recovery | 1.00 |
+| Psychological effects of quitting alcohol | 0.59 |
+| HIIT benefits | 0.59 |
+| Vegetarian protein | 0.97 |
+| AI ethics in healthcare | 0.92 |
+| Sleep deprivation + cognition | 0.67 |
+| Gut microbiome + mental health | 0.87 |
+| Resistance training for elderly | 1.00 |
+| **Mean NDCG@5** | **0.83** |
+| **Mean NDCG@10** | **0.91** |
+
+Mean latency: 3.9ms with HNSW index.
+
+The weakest queries (alcohol psychology, HIIT) suffer because the corpus has fewer papers with exact MeSH matches for those topics. The strongest queries (creatine, resistance training) achieve perfect NDCG because the corpus is dense with directly relevant papers.
+
+**Other additions:**
+- GitHub Actions CI (passing)
+- Makefile with targets for all common operations
+- 25 tests total (14 original + 11 evaluation tests)

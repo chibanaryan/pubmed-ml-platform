@@ -176,8 +176,8 @@ def evaluate_model(
 
         results.append({
             "query": eq["query"],
-            "ndcg@5": float(ndcg_5),
-            "ndcg@10": float(ndcg_10),
+            "ndcg_5": float(ndcg_5),
+            "ndcg_10": float(ndcg_10),
             "avg_relevance": float(avg_relevance),
             "avg_similarity": float(avg_similarity),
             "avg_mesh_overlap": float(avg_mesh_overlap),
@@ -187,8 +187,8 @@ def evaluate_model(
         })
 
     metrics = {
-        "mean_ndcg@5": float(np.mean([r["ndcg@5"] for r in results])),
-        "mean_ndcg@10": float(np.mean([r["ndcg@10"] for r in results])),
+        "mean_ndcg_5": float(np.mean([r["ndcg_5"] for r in results])),
+        "mean_ndcg_10": float(np.mean([r["ndcg_10"] for r in results])),
         "mean_relevance": float(np.mean([r["avg_relevance"] for r in results])),
         "mean_similarity": float(np.mean([r["avg_similarity"] for r in results])),
         "mean_mesh_overlap": float(np.mean([r["avg_mesh_overlap"] for r in results])),
@@ -205,8 +205,8 @@ def print_results(model_key: str, eval_results: dict):
     print(f"\n{'=' * 60}")
     print(f"  {model_key}")
     print(f"{'=' * 60}")
-    print(f"  NDCG@5:  {metrics['mean_ndcg@5']:.4f}")
-    print(f"  NDCG@10: {metrics['mean_ndcg@10']:.4f}")
+    print(f"  NDCG@5:  {metrics['mean_ndcg_5']:.4f}")
+    print(f"  NDCG@10: {metrics['mean_ndcg_10']:.4f}")
     print(f"  Mean relevance: {metrics['mean_relevance']:.4f}")
     print(f"  Mean similarity: {metrics['mean_similarity']:.4f}")
     print(f"  Mean MeSH overlap: {metrics['mean_mesh_overlap']:.4f}")
@@ -215,7 +215,7 @@ def print_results(model_key: str, eval_results: dict):
     for d in eval_results["details"]:
         rels = d["relevance_distribution"]
         rel_str = "".join(str(r) for r in rels)
-        print(f"  [{d['ndcg@5']:.2f}] {d['query'][:50]}")
+        print(f"  [{d['ndcg_5']:.2f}] {d['query'][:50]}")
         print(f"         rels=[{rel_str}] -> {d['top_hit'][:55] if d['top_hit'] else 'N/A'}")
 
 
@@ -273,7 +273,7 @@ if __name__ == "__main__":
             header += f" {key:>12}"
         print(header)
         print(f"  {'-' * 20}" + f" {'-' * 12}" * len(all_results))
-        for metric in ["mean_ndcg@5", "mean_ndcg@10", "mean_relevance", "mean_latency_ms"]:
+        for metric in ["mean_ndcg_5", "mean_ndcg_10", "mean_relevance", "mean_latency_ms"]:
             row = f"  {metric:<20}"
             values = [all_results[k]["metrics"][metric] for k in all_results]
             best = max(values) if "latency" not in metric else min(values)
