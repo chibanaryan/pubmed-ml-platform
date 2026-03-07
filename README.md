@@ -68,15 +68,14 @@ An end-to-end ML infrastructure project that builds a semantic search engine ove
 # Start all services
 docker compose up -d
 
-# Run initial ingestion (backfill)
-docker compose exec airflow airflow dags trigger pubmed_ingest --conf '{"backfill": true}'
-
-# Generate embeddings
-docker compose exec app python -m src.embeddings.embed_pipeline
+# Run embedding model comparison
+docker compose exec api python -m src.embeddings.embed_pipeline --compare \
+  --db-url postgresql://pubmed:pubmed@postgres:5432/pubmed \
+  --mlflow-uri http://mlflow:5000
 
 # API is available at http://localhost:8000
-# MLflow UI at http://localhost:5000
-# Airflow UI at http://localhost:8080
+# MLflow UI at http://localhost:5001
+# Airflow UI at http://localhost:8080 (admin/admin)
 ```
 
 ## Project Structure
