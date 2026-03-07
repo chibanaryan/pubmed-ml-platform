@@ -50,7 +50,11 @@ python -m pytest tests/ -v
 - MLflow experiment tracking compares two models:
   - `all-MiniLM-L6-v2` (384-dim, general-purpose, fast)
   - `PubMedBERT` (768-dim, domain-specific, trained on biomedical NLI tasks)
-- Evaluation uses MeSH term overlap between query intent and top-k results as a relevance proxy
+- **Contrastive fine-tuning** on 100K MeSH-based pairs using MultipleNegativesRankingLoss (NDCG@5: 0.83 → 0.86)
+- **Cross-encoder re-ranker** for two-stage retrieval: bi-encoder top-50 → cross-encoder top-10 (NDCG@5: 0.83 → 0.92)
+- **Knowledge distillation** from PubMedBERT (teacher) into MiniLM (student) via KL divergence on similarity distributions
+- **ONNX export + INT8 quantization**: 5.3x inference speedup (4.4ms → 0.84ms) with negligible quality loss
+- Evaluation uses MeSH term overlap between query intent and top-k results as a relevance proxy (8 queries, graded 0-3)
 - Batch processing with progress tracking; only embeds papers that don't already have embeddings for the target model
 
 ### 3. Serving Layer (FastAPI)
@@ -112,7 +116,10 @@ pubmed-ml-platform/
 │   ├── embeddings/
 │   │   ├── embed_pipeline.py     # Embedding generation + MLflow tracking
 │   │   ├── evaluate.py           # NDCG evaluation harness
-│   │   └── finetune.py           # Contrastive fine-tuning on MeSH pairs
+│   │   ├── finetune.py           # Contrastive fine-tuning on MeSH pairs
+│   │   ├── cross_encoder.py      # Cross-encoder re-ranker (two-stage pipeline)
+│   │   ├── distill.py            # Knowledge distillation (PubMedBERT → MiniLM)
+│   │   └── onnx_export.py        # ONNX export + INT8 quantization
 │   ├── serving/
 │   │   └── api.py                # FastAPI application
 │   └── mcp/

@@ -117,3 +117,73 @@ The weakest queries (alcohol psychology, HIIT) suffer because the corpus has few
 - Added `.dockerignore` to exclude `.venv`, `.git`, `__pycache__`, caches from Docker build context
 - Updated README: HNSW latency numbers, NDCG results, metrics endpoint, on-demand model loading, multi-stage build, CI, full project structure
 - Docker multi-stage image built and verified running against live DB
+
+## 2026-03-07 — Fine-tuning, cross-encoder, ONNX
+
+### Contrastive fine-tuning
+
+Fine-tuned MiniLM on PubMed abstracts using `MultipleNegativesRankingLoss`. Training data: ~100K positive pairs from papers sharing 2+ topic-relevant MeSH terms (after filtering out demographics, study design, and geography MeSH terms). 1 epoch, batch size 64, ~20 minutes on Apple Silicon MPS.
+
+**Results:** NDCG@5 improved from 0.83 to 0.86. The gains were concentrated on previously weak queries: sleep deprivation +0.19, HIIT +0.13. Strong queries held steady. Re-embedded all 40K papers with the fine-tuned model and stored under `model_name="minilm-pubmed-ft"` for proper apples-to-apples evaluation.
+
+### Cross-encoder re-ranker
+
+Built a two-stage search pipeline: bi-encoder retrieves top-50, cross-encoder re-ranks to top-10. Fine-tuned `cross-encoder/ms-marco-MiniLM-L-6-v2` on ~20K (query, document, score) triples. Queries are MeSH terms converted to natural language, with graded relevance scoring (0.0 for negatives, 0.5-1.0 for positives based on MeSH overlap depth).
+
+**Results:** NDCG@5 improved from 0.83 to 0.92 (+0.09). HIIT query went from 0.59 to 1.00. Adds ~272ms latency per query for re-ranking 50 candidates.
+
+**Issues encountered:**
+- sentence-transformers v4 `CrossEncoder.fit()` uses the Trainer API internally and didn't always persist the model to `output_dir`. Fixed by adding explicit `model.save(output_dir)` after `.fit()`.
+- `CrossEncoder()` rejects relative paths as model identifiers. Had to use `Path.resolve()` for absolute paths.
+- DB connection timed out during 6-minute training. Split training and evaluation into separate commands with fresh connections.
+
+### ONNX export + INT8 quantization
+
+Exported MiniLM to ONNX via `torch.onnx.export` with dynamic axes for variable batch size and sequence length. Quantized to INT8 using `onnxruntime.quantization.quantize_dynamic`.
+
+Had to reimplement mean pooling manually since sentence-transformers' pooling layer isn't part of the exported ONNX graph. The `OnnxEmbedder` class wraps ONNX Runtime inference with numpy-based mean pooling and L2 normalization.
+
+**Latency results (100 iterations):**
+
+| Model | Mean | P50 | P95 |
+|-------|------|-----|-----|
+| PyTorch | 4.41ms | 4.25ms | 5.12ms |
+| ONNX FP32 | 1.46ms | 1.39ms | 1.68ms |
+| ONNX INT8 | 0.84ms | 0.82ms | 0.97ms |
+
+INT8 is 5.3x faster than PyTorch. NDCG@5 degradation: -0.017 for INT8, 0.000 for FP32.
+
+**Issues encountered:**
+- `onnxscript` not installed (required by newer torch.onnx). Pip installed it.
+- `AutoTokenizer.from_pretrained("all-MiniLM-L6-v2")` fails; needs full HuggingFace path `sentence-transformers/all-MiniLM-L6-v2`. Added `DB_MODEL_NAME` as separate constant.
+- MPS device conflict during export: the transformer model was on MPS but ONNX export needs CPU tensors. Fixed with `transformer.auto_model.cpu()`.
+
+## 2026-03-07 — Knowledge distillation
+
+### What changed
+
+**Distilled PubMedBERT into MiniLM.** Used KL divergence on pairwise similarity distributions to transfer PubMedBERT's domain knowledge into MiniLM's smaller architecture. For each batch of 32 texts, both models compute pairwise cosine similarity matrices. The teacher's distribution (after softmax with temperature=2.0) becomes the target, and the student is trained to match it.
+
+Training: 3 epochs on 40K paper texts, ~20 min per epoch on MPS. Loss converged from 0.0008 to 0.0004.
+
+**Results:**
+
+| Query | Base | Distilled | Delta |
+|-------|------|-----------|-------|
+| Creatine | 1.00 | 1.00 | 0.00 |
+| Quitting alcohol | 0.59 | 0.55 | -0.04 |
+| HIIT | 0.59 | 0.78 | +0.19 |
+| Vegetarian protein | 0.97 | 0.92 | -0.05 |
+| AI ethics | 0.92 | 1.00 | +0.08 |
+| Sleep deprivation | 0.68 | 0.36 | -0.32 |
+| Gut microbiome | 0.87 | 0.89 | +0.02 |
+| Resistance training | 1.00 | 1.00 | 0.00 |
+| **Mean NDCG@5** | **0.83** | **0.81** | **-0.02** |
+
+The distillation transferred some domain-specific knowledge (HIIT +0.19, AI ethics +0.08) but hurt others (sleep deprivation -0.32). Net effect was a slight regression. The contrastive fine-tuning approach (NDCG@5 0.86) remains the better method for this use case.
+
+**Issues encountered:**
+- `SentenceTransformer.encode()` returns detached tensors with no `grad_fn`. Had to use the underlying `auto_model` directly for the student's forward pass with manual mean pooling.
+- Neon free tier hit 512MB storage limit after storing 30K distilled embeddings (already had 40K base + 40K fine-tuned). Deleted the fine-tuned embeddings to make room, but Neon's auto-vacuum hadn't reclaimed physical space yet. Evaluated with 30K embeddings (still a representative sample).
+
+**Takeaway:** Similarity-based distillation is a blunt tool. The teacher's pairwise similarity distribution captures document relationships, but it doesn't encode which relationships matter for retrieval. Contrastive fine-tuning with task-specific pairs (MeSH overlap) gives the model more directed signal about what "relevant" means in this domain.
