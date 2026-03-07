@@ -262,13 +262,16 @@ def run_comparison(config: EmbeddingConfig):
             mlflow.log_dict(eval_results["details"], "eval_details.json")
 
             # Register model in MLflow model registry
-            logger.info(f"Registering model {model_name} in MLflow registry...")
-            model_info_mlflow = mlflow.sentence_transformers.log_model(
-                model,
-                artifact_path="model",
-                registered_model_name=f"pubmed-{model_key}",
-            )
-            logger.info(f"Model registered: {model_info_mlflow.model_uri}")
+            try:
+                logger.info(f"Registering model {model_name} in MLflow registry...")
+                model_info_mlflow = mlflow.sentence_transformers.log_model(
+                    model,
+                    artifact_path="model",
+                    registered_model_name=f"pubmed-{model_key}",
+                )
+                logger.info(f"Model registered: {model_info_mlflow.model_uri}")
+            except Exception as e:
+                logger.warning(f"Failed to register model in registry: {e}")
 
             logger.info(f"Results for {model_key}: {eval_results['metrics']}")
 
@@ -318,11 +321,14 @@ def run_embedding(config: EmbeddingConfig, model_key: str):
         })
 
         # Register model in MLflow model registry
-        mlflow.sentence_transformers.log_model(
-            model,
-            artifact_path="model",
-            registered_model_name=f"pubmed-{model_key}",
-        )
+        try:
+            mlflow.sentence_transformers.log_model(
+                model,
+                artifact_path="model",
+                registered_model_name=f"pubmed-{model_key}",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to register model in registry: {e}")
 
     conn.close()
     logger.info(f"Done. Embedded {len(texts)} abstracts in {embed_time:.1f}s")

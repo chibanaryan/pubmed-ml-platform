@@ -245,3 +245,28 @@ Example config for comparing PubMedBERT against MiniLM with a 20% traffic split:
 AB_TEST_MODEL=pritamdeka/PubMedBERT-mnli-snli-scinli-scitail-mednli-stsb
 AB_TEST_TRAFFIC=0.2
 ```
+
+## 2026-03-07 — Full-corpus PubMedBERT comparison
+
+### What changed
+
+**Embedded all 39,731 papers with PubMedBERT.** Took ~15 minutes on CPU. Required stopping local Postgres (port 5432 conflict with Docker). Added try/except around MLflow model registration in embed_pipeline since the Docker MLflow server doesn't support the newer `logged-models` API.
+
+**Full-corpus NDCG results:**
+
+| Query | MiniLM | PubMedBERT |
+|-------|--------|------------|
+| Creatine + muscle recovery | 1.00 | 1.00 |
+| Quitting alcohol | 0.59 | 0.65 |
+| HIIT benefits | 0.59 | 0.89 |
+| Vegetarian protein | 0.97 | 0.88 |
+| AI ethics in healthcare | 0.92 | 1.00 |
+| Sleep deprivation + cognition | 0.67 | 0.81 |
+| Gut microbiome + mental health | 0.87 | 0.95 |
+| Resistance training for elderly | 1.00 | 1.00 |
+| **Mean NDCG@5** | **0.83** | **0.90** |
+| **Mean NDCG@10** | **0.91** | **0.96** |
+
+PubMedBERT wins at full scale. The early 10K-paper comparison was misleading. With denser topic clusters at 40K papers, the domain-specific model's advantage shows up clearly. Biggest gap: HIIT (0.59 vs 0.89). Only loss: vegetarian protein (0.97 vs 0.88).
+
+Updated the blog post with these results, replacing the "honest caveat" about never having run PubMedBERT at scale.
