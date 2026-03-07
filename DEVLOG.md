@@ -110,3 +110,10 @@ The weakest queries (alcohol psychology, HIIT) suffer because the corpus has few
 **Separated Airflow DB.** Added a dedicated `airflow-db` Postgres service in docker-compose. Airflow's 50+ metadata tables no longer clutter the application database. Airflow still connects to the app DB for DAG operations via the `pubmed_postgres` connection. Cleaned up the 48 leftover Airflow tables from the app DB.
 
 **Airflow DAG verified.** Triggered the DAG through Airflow CLI. Task execution works correctly: `get_ingestion_state` reads from app DB, `fetch_abstracts` calls PubMed API with retry logic, `load_to_postgres` upserts results. All 5 category tasks run in parallel. Rate limiting kicks in when both the scheduled and manual runs fire simultaneously (10 concurrent PubMed API calls), but the retry mechanism handles it.
+
+**Tests expanded to 28.** Added tests for the `/metrics` endpoint (Prometheus format validation, request tracking) and unknown model rejection (400 response). All passing in CI.
+
+**Other cleanup:**
+- Added `.dockerignore` to exclude `.venv`, `.git`, `__pycache__`, caches from Docker build context
+- Updated README: HNSW latency numbers, NDCG results, metrics endpoint, on-demand model loading, multi-stage build, CI, full project structure
+- Docker multi-stage image built and verified running against live DB
