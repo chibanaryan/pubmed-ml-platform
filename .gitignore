@@ -22,6 +22,8 @@ venv/
 *.pt
 *.bin
 *.onnx
+*.safetensors
+models/
 mlruns/
 mlartifacts/
 

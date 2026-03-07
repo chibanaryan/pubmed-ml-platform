@@ -59,7 +59,7 @@ python -m pytest tests/ -v
 - `GET /similar/{pmid}` — find semantically similar papers using an existing paper's embedding
 - `GET /health` — health check with paper count and loaded models
 - `GET /metrics` — Prometheus-compatible metrics (request counts, latency, per-endpoint breakdown)
-- On-demand model loading: MiniLM at startup, PubMedBERT loaded on first request and cached
+- Lazy model loading: models load on first request and are cached in memory (keeps startup fast for health checks)
 
 ### 4. MCP Server
 - Wraps the FastAPI endpoints as MCP tools for LLM integration
@@ -71,7 +71,8 @@ python -m pytest tests/ -v
 - **Docker Compose** for local development (Postgres+pgvector, MLflow, Airflow with separate metadata DB, FastAPI)
 - **Kubernetes manifests** for deployment (namespace, PVCs, deployments with health probes, services)
 - **pgvector** with HNSW expression indexes for vector similarity search
-- **Multi-stage Docker build** to keep build dependencies out of the runtime image
+- **CPU-only Docker image** with PyTorch installed from the CPU index (641MB vs 3.5GB with CUDA)
+- **Fly.io** for production API hosting, **Neon** for managed Postgres with pgvector
 - **GitHub Actions CI** with ruff linting and pytest
 
 ## Design Decisions
@@ -96,7 +97,7 @@ python -m pytest tests/ -v
 | Storage       | PostgreSQL + pgvector                  |
 | Serving       | FastAPI, Uvicorn                       |
 | LLM Tools     | Model Context Protocol (MCP)           |
-| Deployment    | Docker, Kubernetes                     |
+| Deployment    | Docker, Fly.io, Neon Postgres          |
 | Language      | Python 3.11+                           |
 
 ## Project Structure
@@ -110,7 +111,8 @@ pubmed-ml-platform/
 │   │   └── pubmed_client.py      # PubMed E-utilities API client
 │   ├── embeddings/
 │   │   ├── embed_pipeline.py     # Embedding generation + MLflow tracking
-│   │   └── evaluate.py           # NDCG evaluation harness
+│   │   ├── evaluate.py           # NDCG evaluation harness
+│   │   └── finetune.py           # Contrastive fine-tuning on MeSH pairs
 │   ├── serving/
 │   │   └── api.py                # FastAPI application
 │   └── mcp/
@@ -129,6 +131,7 @@ pubmed-ml-platform/
 ├── .github/workflows/ci.yml
 ├── docker-compose.yml
 ├── Dockerfile
+├── fly.toml
 ├── Makefile
 ├── pyproject.toml
 ├── DEVLOG.md

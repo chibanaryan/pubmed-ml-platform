@@ -25,7 +25,7 @@
 
 ## PyTorch / Model Training
 
-- [ ] **Fine-tune MiniLM on PubMed abstracts.** Use the 40K abstracts as a contrastive learning dataset. Papers sharing MeSH terms are positive pairs, random papers are negatives. Write the training loop in PyTorch with `MultipleNegativesRankingLoss`. Compare NDCG before/after fine-tuning.
+- [x] **Fine-tune MiniLM on PubMed abstracts.** Contrastive learning with 100K MeSH-based pairs using `MultipleNegativesRankingLoss`. NDCG@5 improved from 0.83 to 0.86, with biggest gains on previously weak queries (sleep deprivation +0.19, HIIT +0.13).
 - [ ] **Train a cross-encoder re-ranker.** Bi-encoders (what we use now) are fast but approximate. A cross-encoder takes (query, document) pairs and scores them jointly, which is more accurate but too slow to run on all 40K papers. Use it as a second stage: bi-encoder retrieves top-50, cross-encoder re-ranks to top-10. Train on MeSH-derived relevance labels.
 - [ ] **ONNX export + quantization.** Export the embedding model to ONNX, then quantize to INT8. Benchmark inference latency and measure any NDCG degradation. Goal: cut per-query encoding time without hurting retrieval quality.
 - [ ] **Distill PubMedBERT into a smaller model.** Use PubMedBERT (768-dim) as a teacher to train a smaller student model (384-dim or 256-dim) that captures domain knowledge in fewer dimensions. Requires writing a distillation loss (KL divergence on similarity distributions).
