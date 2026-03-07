@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+*.env.local
+
+# Data / ML artifacts
+*.pt
+*.bin
+*.onnx
+mlruns/
+mlartifacts/
+
+# Docker volumes
+pgdata/
+
+# OS
+.DS_Store
+Thumbs.db
