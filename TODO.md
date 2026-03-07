@@ -26,7 +26,7 @@
 ## PyTorch / Model Training
 
 - [x] **Fine-tune MiniLM on PubMed abstracts.** Contrastive learning with 100K MeSH-based pairs using `MultipleNegativesRankingLoss`. NDCG@5 improved from 0.83 to 0.86, with biggest gains on previously weak queries (sleep deprivation +0.19, HIIT +0.13).
-- [ ] **Train a cross-encoder re-ranker.** Bi-encoders (what we use now) are fast but approximate. A cross-encoder takes (query, document) pairs and scores them jointly, which is more accurate but too slow to run on all 40K papers. Use it as a second stage: bi-encoder retrieves top-50, cross-encoder re-ranks to top-10. Train on MeSH-derived relevance labels.
+- [x] **Train a cross-encoder re-ranker.** Two-stage pipeline: bi-encoder retrieves top-50, cross-encoder re-ranks to top-10. Trained on 20K MeSH-derived examples. NDCG@5 improved from 0.83 to 0.92 (+0.09). HIIT query went from 0.59 to 1.00. Adds ~272ms latency per query.
 - [ ] **ONNX export + quantization.** Export the embedding model to ONNX, then quantize to INT8. Benchmark inference latency and measure any NDCG degradation. Goal: cut per-query encoding time without hurting retrieval quality.
 - [ ] **Distill PubMedBERT into a smaller model.** Use PubMedBERT (768-dim) as a teacher to train a smaller student model (384-dim or 256-dim) that captures domain knowledge in fewer dimensions. Requires writing a distillation loss (KL divergence on similarity distributions).
 - [ ] **Custom embedding model from scratch.** Initialize from `bert-base-uncased`, train a sentence embedding model on PubMed data using in-batch negatives. Full control over tokenizer, pooling strategy, and loss function. Compare against MiniLM to see what domain-specific pretraining buys you.
