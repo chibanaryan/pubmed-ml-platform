@@ -68,6 +68,7 @@ python -m pytest tests/ -v
 - `GET /metrics` — Prometheus-compatible metrics (request counts, latency, per-endpoint breakdown)
 - Lazy model loading: tries MLflow registry first (if configured), falls back to HuggingFace. Models cached in memory
 - Async DB layer with asyncpg connection pool (configurable min/max connections)
+- **A/B testing**: route a configurable percentage of traffic to a treatment model via env vars. Per-model metrics at `/metrics` and `/ab-results`
 
 ### 4. MCP Server
 - Wraps the FastAPI endpoints as MCP tools for LLM integration

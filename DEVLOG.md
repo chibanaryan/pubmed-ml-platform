@@ -231,3 +231,17 @@ Updated test mocks from psycopg2's cursor pattern to asyncpg's pool/connection p
 **Registry management script.** `src/embeddings/registry.py` provides three commands: `list` (show all registered models and versions), `promote` (set the `@production` alias on a version), and `load` (pull the production model from the registry). Uses MLflow's alias system instead of the deprecated stage-based transitions.
 
 **API loads from registry.** When `MLFLOW_TRACKING_URI` is set, the API tries to load models from the registry (`models:/pubmed-minilm@production`) before falling back to HuggingFace. This means model swaps only require promoting a new version in the registry, no code deploy needed. Docker Compose passes `MLFLOW_TRACKING_URI=http://mlflow:5000` to the API service.
+
+## 2026-03-07 — A/B testing
+
+### What changed
+
+**A/B traffic routing for models.** Set `AB_TEST_MODEL` to a treatment model name and `AB_TEST_TRAFFIC` to a float (0.0-1.0) to split search traffic between the default model and the treatment. Only applies when the user doesn't explicitly choose a model. Each search response now includes a `model_used` field so clients know which model served the request.
+
+**Per-model metrics.** The `/metrics` endpoint now emits `pubmed_ab_requests_total` and `pubmed_ab_avg_latency_ms` broken out by model name. A new `/ab-results` endpoint returns a JSON summary of the A/B test: request counts, average latency, and traffic share per model.
+
+Example config for comparing PubMedBERT against MiniLM with a 20% traffic split:
+```
+AB_TEST_MODEL=pritamdeka/PubMedBERT-mnli-snli-scinli-scitail-mednli-stsb
+AB_TEST_TRAFFIC=0.2
+```

@@ -2,16 +2,18 @@
 FastAPI serving layer for PubMed semantic search.
 
 Endpoints:
-    POST /search       — semantic search over abstracts
-    GET  /paper/{pmid} — fetch a specific paper
+    POST /search        — semantic search over abstracts
+    GET  /paper/{pmid}  — fetch a specific paper
     GET  /similar/{pmid} — find similar papers
-    GET  /health       — health check
-    GET  /metrics      — Prometheus metrics
+    GET  /health        — health check
+    GET  /metrics       — Prometheus metrics
+    GET  /ab-results    — A/B test comparison
 """
 
 import json
 import logging
 import os
+import random
 import time
 from contextlib import asynccontextmanager
 from datetime import date
@@ -39,6 +41,10 @@ MLFLOW_REGISTRY_NAMES = {
 POOL_MIN = int(os.environ.get("DB_POOL_MIN", "2"))
 POOL_MAX = int(os.environ.get("DB_POOL_MAX", "10"))
 
+# A/B testing config (set AB_TEST_MODEL to enable)
+AB_TEST_MODEL = os.environ.get("AB_TEST_MODEL", "")  # treatment model name
+AB_TEST_TRAFFIC = float(os.environ.get("AB_TEST_TRAFFIC", "0.0"))  # fraction routed to treatment (0.0-1.0)
+
 # --- Metrics ---
 
 _metrics = {
@@ -47,6 +53,8 @@ _metrics = {
     "latency_sum_ms": 0.0,
     "latency_count": 0,
     "errors_total": 0,
+    "ab_requests": {},    # model_name -> count
+    "ab_latency_sum": {},  # model_name -> total latency ms
 }
 
 # --- Models ---
@@ -79,6 +87,7 @@ class SearchResponse(BaseModel):
     query: str
     total: int
     latency_ms: float
+    model_used: str | None = None
 
 
 # --- App ---
@@ -145,12 +154,17 @@ async def search(req: SearchRequest):
     _metrics["requests_by_endpoint"]["search"] = _metrics["requests_by_endpoint"].get("search", 0) + 1
     start = time.time()
 
-    model = _get_model(req.model_name)
+    # A/B test: route to treatment model if enabled and user didn't explicitly choose
+    actual_model_name = req.model_name
+    if AB_TEST_MODEL and req.model_name == DEFAULT_MODEL and random.random() < AB_TEST_TRAFFIC:
+        actual_model_name = AB_TEST_MODEL
+
+    model = _get_model(actual_model_name)
     query_embedding = model.encode(req.query, normalize_embeddings=True).tolist()
 
     # Build query with optional filters
     conditions = ["e.model_name = $2"]
-    params: list = [query_embedding, req.model_name]
+    params: list = [query_embedding, actual_model_name]
     param_idx = 3
 
     if req.min_date:
@@ -168,7 +182,7 @@ async def search(req: SearchRequest):
 
     where_clause = " AND ".join(conditions)
 
-    dim = MODEL_DIMS.get(req.model_name, 384)
+    dim = MODEL_DIMS.get(actual_model_name, 384)
     vec_cast = f"::vector({dim})"
 
     sql = f"""
@@ -204,11 +218,16 @@ async def search(req: SearchRequest):
     _metrics["latency_sum_ms"] += latency_ms
     _metrics["latency_count"] += 1
 
+    # Track A/B metrics per model
+    _metrics["ab_requests"][actual_model_name] = _metrics["ab_requests"].get(actual_model_name, 0) + 1
+    _metrics["ab_latency_sum"][actual_model_name] = _metrics["ab_latency_sum"].get(actual_model_name, 0.0) + latency_ms
+
     return SearchResponse(
         results=results,
         query=req.query,
         total=len(results),
         latency_ms=round(latency_ms, 2),
+        model_used=actual_model_name,
     )
 
 
@@ -345,4 +364,37 @@ async def metrics():
             "# TYPE pubmed_endpoint_requests_total counter",
             f'pubmed_endpoint_requests_total{{endpoint="{endpoint}"}} {count}',
         ])
+    for model_name, count in _metrics["ab_requests"].items():
+        avg_lat = _metrics["ab_latency_sum"].get(model_name, 0) / max(count, 1)
+        lines.extend([
+            "",
+            "# HELP pubmed_ab_requests_total A/B test requests by model.",
+            "# TYPE pubmed_ab_requests_total counter",
+            f'pubmed_ab_requests_total{{model="{model_name}"}} {count}',
+            f'pubmed_ab_avg_latency_ms{{model="{model_name}"}} {avg_lat:.2f}',
+        ])
     return Response(content="\n".join(lines) + "\n", media_type="text/plain")
+
+
+@app.get("/ab-results")
+async def ab_results():
+    """Compare A/B test metrics between models."""
+    if not _metrics["ab_requests"]:
+        return {"status": "no_data", "message": "No A/B test data collected yet."}
+
+    results = {}
+    for model_name, count in _metrics["ab_requests"].items():
+        avg_latency = _metrics["ab_latency_sum"].get(model_name, 0) / max(count, 1)
+        results[model_name] = {
+            "requests": count,
+            "avg_latency_ms": round(avg_latency, 2),
+            "traffic_share": round(count / max(sum(_metrics["ab_requests"].values()), 1), 3),
+        }
+
+    return {
+        "status": "active" if AB_TEST_MODEL else "inactive",
+        "control": DEFAULT_MODEL,
+        "treatment": AB_TEST_MODEL or None,
+        "traffic_split": AB_TEST_TRAFFIC,
+        "models": results,
+    }
