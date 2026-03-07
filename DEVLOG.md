@@ -211,3 +211,13 @@ A query-only comparison (encoding queries with BERT and searching against MiniLM
 Dashboard panels: request rate (total and per-endpoint), average search latency, error rate, models loaded, total requests/errors/searches as stat panels. All auto-provisioned from JSON so the dashboard survives container restarts.
 
 Config: `monitoring/prometheus.yml`, `monitoring/grafana/provisioning/` for datasource and dashboard provider, `monitoring/grafana/dashboards/pubmed-api.json` for the dashboard definition. Grafana at :3000 (admin/admin, anonymous read enabled), Prometheus at :9090.
+
+## 2026-03-07 — Async DB layer
+
+### What changed
+
+**Replaced psycopg2 with asyncpg.** The API was using synchronous psycopg2 with a single connection, which blocks the event loop on every DB call. Switched to asyncpg with a connection pool (min 2, max 10, configurable via `DB_POOL_MIN`/`DB_POOL_MAX` env vars). Pool is created in the FastAPI lifespan handler and closed on shutdown.
+
+All endpoints now use `async with pool.acquire() as conn` for proper connection lifecycle management. Query parameter style changed from `%s` (psycopg2) to `$1, $2` (asyncpg). Removed the old `_conn` global in favor of `_pool`.
+
+Updated test mocks from psycopg2's cursor pattern to asyncpg's pool/connection pattern using `AsyncMock`. All 28 tests passing.

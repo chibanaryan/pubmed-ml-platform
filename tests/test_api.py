@@ -2,7 +2,7 @@
 
 import json
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,10 +10,8 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def client():
-    """Create a test client with mocked DB and model."""
-    with patch("src.serving.api.SentenceTransformer") as mock_st, \
-         patch("src.serving.api.psycopg2") as mock_pg:
-
+    """Create a test client with mocked DB pool and model."""
+    with patch("src.serving.api.SentenceTransformer") as mock_st:
         import numpy as np
 
         # Mock the model
@@ -21,14 +19,21 @@ def client():
         mock_model.encode.return_value = np.zeros(384)
         mock_st.return_value = mock_model
 
-        # Mock the DB connection
-        mock_conn = MagicMock()
-        mock_pg.connect.return_value = mock_conn
+        # Mock asyncpg pool and connection
+        mock_conn = AsyncMock()
+        mock_pool = MagicMock()
+
+        # Make pool.acquire() work as async context manager
+        acm = AsyncMock()
+        acm.__aenter__ = AsyncMock(return_value=mock_conn)
+        acm.__aexit__ = AsyncMock(return_value=False)
+        mock_pool.acquire.return_value = acm
+        mock_pool.close = AsyncMock()
 
         from src.serving.api import app
         import src.serving.api as api_module
         api_module._models["all-MiniLM-L6-v2"] = mock_model
-        api_module._conn = mock_conn
+        api_module._pool = mock_pool
 
         yield TestClient(app, raise_server_exceptions=False), mock_conn, mock_model
 
@@ -36,10 +41,7 @@ def client():
 class TestHealthEndpoint:
     def test_health_returns_paper_count(self, client):
         test_client, mock_conn, _ = client
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = (42,)
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_conn.fetchval = AsyncMock(return_value=42)
 
         resp = test_client.get("/health")
         assert resp.status_code == 200
@@ -67,9 +69,7 @@ class TestSearchEndpoint:
         import numpy as np
 
         mock_model.encode.return_value = np.zeros(384)
-
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = [
+        mock_conn.fetch = AsyncMock(return_value=[
             {
                 "pmid": 12345,
                 "title": "Test Paper",
@@ -80,9 +80,7 @@ class TestSearchEndpoint:
                 "mesh_terms": json.dumps(["Creatine"]),
                 "similarity": 0.95,
             }
-        ]
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        ])
 
         resp = test_client.post("/search", json={"query": "creatine muscle"})
         assert resp.status_code == 200
@@ -91,7 +89,6 @@ class TestSearchEndpoint:
         assert data["results"][0]["pmid"] == 12345
         assert data["results"][0]["similarity"] == 0.95
         assert "latency_ms" in data
-
 
     def test_search_rejects_unknown_model(self, client):
         test_client, _, _ = client
@@ -108,7 +105,7 @@ class TestMetricsEndpoint:
         body = resp.text
         assert "pubmed_requests_total" in body
         assert "pubmed_models_loaded" in body
-        assert "pubmed_search_latency_ms_avg" in body
+        assert "pubmed_search_latency_seconds" in body
 
     def test_metrics_tracks_requests(self, client):
         test_client, mock_conn, mock_model = client
@@ -120,31 +117,24 @@ class TestMetricsEndpoint:
         api_module._metrics["requests_by_endpoint"] = {}
 
         mock_model.encode.return_value = np.zeros(384)
-        mock_cursor = MagicMock()
-        mock_cursor.fetchall.return_value = []
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_conn.fetch = AsyncMock(return_value=[])
 
         test_client.post("/search", json={"query": "test"})
         resp = test_client.get("/metrics")
-        assert 'pubmed_requests_by_endpoint{endpoint="search"} 1' in resp.text
+        assert 'pubmed_endpoint_requests_total{endpoint="search"} 1' in resp.text
 
 
 class TestPaperEndpoint:
     def test_get_paper_not_found(self, client):
         test_client, mock_conn, _ = client
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = None
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        mock_conn.fetchrow = AsyncMock(return_value=None)
 
         resp = test_client.get("/paper/99999")
         assert resp.status_code == 404
 
     def test_get_paper_returns_data(self, client):
         test_client, mock_conn, _ = client
-        mock_cursor = MagicMock()
-        mock_cursor.fetchone.return_value = {
+        mock_conn.fetchrow = AsyncMock(return_value={
             "pmid": 12345,
             "title": "Test",
             "abstract": "Abstract",
@@ -152,9 +142,7 @@ class TestPaperEndpoint:
             "journal": "Journal",
             "pub_date": date(2024, 1, 1),
             "mesh_terms": ["Term"],
-        }
-        mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-        mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+        })
 
         resp = test_client.get("/paper/12345")
         assert resp.status_code == 200

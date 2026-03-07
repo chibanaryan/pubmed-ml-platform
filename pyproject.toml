@@ -8,7 +8,7 @@ license = {text = "MIT"}
 
 dependencies = [
     "requests>=2.31",
-    "psycopg2-binary>=2.9",
+    "asyncpg>=0.29",
     "sentence-transformers>=3.0",
     "torch>=2.2",
     "numpy>=1.26",
