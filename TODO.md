@@ -12,10 +12,11 @@
 - [x] **Scale to ~40K papers.** 39,731 papers with MiniLM embeddings.
 - [x] **NDCG evaluation harness.** 8 queries with graded relevance scoring (0-3). Mean NDCG@5: 0.83, NDCG@10: 0.91.
 
+- [x] **PubMedBERT as selectable model in the API.** On-demand model loading. Default model loads at startup, PubMedBERT loads on first request.
+- [x] **Prometheus metrics endpoint.** `/metrics` endpoint with request counts, latency stats, models loaded, per-endpoint breakdown.
+- [x] **Docker image optimization.** Multi-stage build separating build deps from runtime.
+- [x] **Separate Airflow DB from application DB.** Dedicated `airflow-db` service in docker-compose, Airflow tables no longer clutter the app schema.
+
 ## Remaining
 
-- [ ] **PubMedBERT as selectable model in the API.** The API already accepts `model_name` as a param and handles dimension lookup. Just needs the model loaded at startup or loaded on-demand.
 - [ ] **Airflow DAG testing.** The DAG imports work and it shows up in the Airflow UI, but it hasn't been triggered through Airflow itself.
-- [ ] **Prometheus metrics endpoint.** Add request count, latency histogram.
-- [ ] **Docker image optimization.** Multi-stage build to cut image size.
-- [ ] **Separate Airflow DB from application DB.** Both share the same Postgres instance, cluttering the schema with 50+ Airflow tables.

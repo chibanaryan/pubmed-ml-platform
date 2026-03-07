@@ -18,7 +18,7 @@ from datetime import date
 
 import psycopg2
 import psycopg2.extras
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sentence_transformers import SentenceTransformer
 
@@ -27,10 +27,20 @@ logger = logging.getLogger(__name__)
 # --- Config ---
 
 DB_URL = os.environ.get("DATABASE_URL", "postgresql://pubmed:pubmed@localhost:5432/pubmed")
-MODEL_NAME = "all-MiniLM-L6-v2"  # Switch after MLflow comparison
+DEFAULT_MODEL = "all-MiniLM-L6-v2"
 MODEL_DIMS = {
     "all-MiniLM-L6-v2": 384,
     "pritamdeka/PubMedBERT-mnli-snli-scinli-scitail-mednli-stsb": 768,
+}
+
+# --- Metrics ---
+
+_metrics = {
+    "requests_total": 0,
+    "requests_by_endpoint": {},
+    "latency_sum_ms": 0.0,
+    "latency_count": 0,
+    "errors_total": 0,
 }
 
 # --- Models ---
@@ -42,7 +52,7 @@ class SearchRequest(BaseModel):
     min_date: date | None = None
     max_date: date | None = None
     mesh_filter: list[str] | None = None
-    model_name: str = MODEL_NAME
+    model_name: str = DEFAULT_MODEL
 
 
 class PaperResult(BaseModel):
@@ -65,15 +75,24 @@ class SearchResponse(BaseModel):
 
 # --- App ---
 
-_model: SentenceTransformer | None = None
+_models: dict[str, SentenceTransformer] = {}
 _conn = None
+
+
+def _get_model(model_name: str) -> SentenceTransformer:
+    if model_name not in MODEL_DIMS:
+        raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
+    if model_name not in _models:
+        logger.info(f"Loading model {model_name} (on-demand)...")
+        _models[model_name] = SentenceTransformer(model_name)
+    return _models[model_name]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _model, _conn
-    logger.info(f"Loading model {MODEL_NAME}...")
-    _model = SentenceTransformer(MODEL_NAME)
+    global _conn
+    logger.info(f"Loading default model {DEFAULT_MODEL}...")
+    _models[DEFAULT_MODEL] = SentenceTransformer(DEFAULT_MODEL)
     _conn = psycopg2.connect(DB_URL)
     logger.info("Ready.")
     yield
@@ -104,9 +123,12 @@ def _parse_json_field(val) -> list:
 
 @app.post("/search", response_model=SearchResponse)
 async def search(req: SearchRequest):
+    _metrics["requests_total"] += 1
+    _metrics["requests_by_endpoint"]["search"] = _metrics["requests_by_endpoint"].get("search", 0) + 1
     start = time.time()
 
-    query_embedding = _model.encode(req.query, normalize_embeddings=True).tolist()
+    model = _get_model(req.model_name)
+    query_embedding = model.encode(req.query, normalize_embeddings=True).tolist()
 
     # Build query with optional filters
     conditions = ["e.model_name = %s"]
@@ -159,6 +181,8 @@ async def search(req: SearchRequest):
     ]
 
     latency_ms = (time.time() - start) * 1000
+    _metrics["latency_sum_ms"] += latency_ms
+    _metrics["latency_count"] += 1
 
     return SearchResponse(
         results=results,
@@ -170,6 +194,8 @@ async def search(req: SearchRequest):
 
 @app.get("/paper/{pmid}", response_model=PaperResult)
 async def get_paper(pmid: int):
+    _metrics["requests_total"] += 1
+    _metrics["requests_by_endpoint"]["paper"] = _metrics["requests_by_endpoint"].get("paper", 0) + 1
     with _conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             "SELECT pmid, title, abstract, authors, journal, pub_date, mesh_terms FROM papers WHERE pmid = %s",
@@ -195,8 +221,10 @@ async def get_paper(pmid: int):
 async def find_similar(
     pmid: int,
     top_k: int = Query(default=10, ge=1, le=100),
-    model_name: str = Query(default=MODEL_NAME),
+    model_name: str = Query(default=DEFAULT_MODEL),
 ):
+    _metrics["requests_total"] += 1
+    _metrics["requests_by_endpoint"]["similar"] = _metrics["requests_by_endpoint"].get("similar", 0) + 1
     start = time.time()
 
     # Get the embedding for this paper
@@ -245,6 +273,8 @@ async def find_similar(
     ]
 
     latency_ms = (time.time() - start) * 1000
+    _metrics["latency_sum_ms"] += latency_ms
+    _metrics["latency_count"] += 1
 
     return SearchResponse(
         results=results,
@@ -260,6 +290,46 @@ async def health():
         with _conn.cursor() as cur:
             cur.execute("SELECT COUNT(*) FROM papers")
             count = cur.fetchone()[0]
-        return {"status": "healthy", "papers_count": count}
+        return {"status": "healthy", "papers_count": count, "models_loaded": list(_models.keys())}
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/metrics")
+async def metrics():
+    avg_latency = (
+        _metrics["latency_sum_ms"] / _metrics["latency_count"]
+        if _metrics["latency_count"] > 0
+        else 0
+    )
+    lines = [
+        "# HELP pubmed_requests_total Total number of API requests.",
+        "# TYPE pubmed_requests_total counter",
+        f'pubmed_requests_total {_metrics["requests_total"]}',
+        "",
+        "# HELP pubmed_errors_total Total number of errors.",
+        "# TYPE pubmed_errors_total counter",
+        f'pubmed_errors_total {_metrics["errors_total"]}',
+        "",
+        "# HELP pubmed_search_latency_ms_avg Average search latency in milliseconds.",
+        "# TYPE pubmed_search_latency_ms_avg gauge",
+        f"pubmed_search_latency_ms_avg {avg_latency:.2f}",
+        "",
+        "# HELP pubmed_search_latency_ms_sum Total search latency in milliseconds.",
+        "# TYPE pubmed_search_latency_ms_sum counter",
+        f'pubmed_search_latency_ms_sum {_metrics["latency_sum_ms"]:.2f}',
+        "",
+        "# HELP pubmed_search_latency_count Total number of search requests.",
+        "# TYPE pubmed_search_latency_count counter",
+        f'pubmed_search_latency_count {_metrics["latency_count"]}',
+        "",
+        "# HELP pubmed_models_loaded Number of models loaded in memory.",
+        "# TYPE pubmed_models_loaded gauge",
+        f"pubmed_models_loaded {len(_models)}",
+    ]
+    for endpoint, count in _metrics["requests_by_endpoint"].items():
+        lines.extend([
+            "",
+            f'pubmed_requests_by_endpoint{{endpoint="{endpoint}"}} {count}',
+        ])
+    return Response(content="\n".join(lines) + "\n", media_type="text/plain")

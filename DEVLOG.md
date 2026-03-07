@@ -92,3 +92,19 @@ The weakest queries (alcohol psychology, HIIT) suffer because the corpus has few
 - GitHub Actions CI (passing)
 - Makefile with targets for all common operations
 - 25 tests total (14 original + 11 evaluation tests)
+
+## 2026-03-07 — API improvements and infra cleanup
+
+### What changed
+
+**On-demand model loading.** The API now supports switching between MiniLM and PubMedBERT at query time via the `model_name` parameter. The default model (MiniLM) loads at startup. PubMedBERT loads on first request and stays cached in memory. Added validation for unknown model names.
+
+**Prometheus metrics endpoint.** `GET /metrics` returns Prometheus-compatible text format with:
+- Total request count and per-endpoint breakdown
+- Search latency (sum, count, average)
+- Number of models loaded in memory
+- Error count
+
+**Multi-stage Docker build.** Split into builder and runtime stages. The builder installs all dependencies (including build-essential for native extensions), then only the installed packages are copied to the slim runtime image. Build tools don't ship in production.
+
+**Separated Airflow DB.** Added a dedicated `airflow-db` Postgres service in docker-compose. Airflow's 50+ metadata tables no longer clutter the application database. Airflow still connects to the app DB for DAG operations via the `pubmed_postgres` connection.

@@ -27,7 +27,7 @@ def client():
 
         from src.serving.api import app
         import src.serving.api as api_module
-        api_module._model = mock_model
+        api_module._models["all-MiniLM-L6-v2"] = mock_model
         api_module._conn = mock_conn
 
         yield TestClient(app, raise_server_exceptions=False), mock_conn, mock_model
