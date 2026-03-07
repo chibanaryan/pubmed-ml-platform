@@ -1,4 +1,4 @@
-.PHONY: up down test lint ingest embed compare logs
+.PHONY: up down test lint ingest embed compare evaluate logs
 
 up:
 	docker compose up -d
@@ -42,6 +42,12 @@ embed:
 
 compare:
 	docker compose exec api python -m src.embeddings.embed_pipeline \
+		--compare \
+		--db-url postgresql://pubmed:pubmed@postgres:5432/pubmed \
+		--mlflow-uri http://mlflow:5000
+
+evaluate:
+	docker compose exec api python -m src.embeddings.evaluate \
 		--compare \
 		--db-url postgresql://pubmed:pubmed@postgres:5432/pubmed \
 		--mlflow-uri http://mlflow:5000
