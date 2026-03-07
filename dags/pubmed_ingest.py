@@ -77,6 +77,7 @@ with DAG(
         # Search for PMIDs
         all_pmids = []
         retstart = 0
+        total = 0
         batch_size = 500
 
         while retstart == 0 or retstart < total:

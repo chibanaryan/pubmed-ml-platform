@@ -15,7 +15,6 @@ Usage:
     uvicorn src.mcp.server:app --port 3001
 """
 
-import json
 import logging
 from typing import Any
 

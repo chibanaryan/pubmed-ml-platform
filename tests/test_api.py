@@ -65,7 +65,6 @@ class TestSearchEndpoint:
     def test_search_returns_results(self, client):
         test_client, mock_conn, mock_model = client
         import numpy as np
-        import psycopg2.extras
 
         mock_model.encode.return_value = np.zeros(384)
 

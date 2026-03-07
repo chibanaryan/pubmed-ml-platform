@@ -6,7 +6,7 @@ from xml.etree import ElementTree
 
 import pytest
 
-from src.ingestion.pubmed_client import PubMedClient, PubMedArticle, CATEGORIES
+from src.ingestion.pubmed_client import PubMedClient, CATEGORIES
 
 
 SAMPLE_SEARCH_RESPONSE = {
