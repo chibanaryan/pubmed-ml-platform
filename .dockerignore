@@ -1,0 +1,12 @@
+.venv
+.git
+.github
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+*.egg-info
+mlflow/
+k8s/
+DEVLOG.md
+TODO.md

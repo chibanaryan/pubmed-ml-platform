@@ -17,6 +17,8 @@
 - [x] **Docker image optimization.** Multi-stage build separating build deps from runtime.
 - [x] **Separate Airflow DB from application DB.** Dedicated `airflow-db` service in docker-compose, Airflow tables no longer clutter the app schema.
 
+- [x] **Airflow DAG testing.** Triggered via CLI. Task pipeline works end to end. Rate limiting from concurrent runs handled by retry mechanism.
+
 ## Remaining
 
-- [ ] **Airflow DAG testing.** The DAG imports work and it shows up in the Airflow UI, but it hasn't been triggered through Airflow itself.
+- [ ] **Add `.dockerignore`.** Exclude `.venv`, `.git`, `__pycache__`, etc. from Docker build context.

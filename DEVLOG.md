@@ -107,4 +107,6 @@ The weakest queries (alcohol psychology, HIIT) suffer because the corpus has few
 
 **Multi-stage Docker build.** Split into builder and runtime stages. The builder installs all dependencies (including build-essential for native extensions), then only the installed packages are copied to the slim runtime image. Build tools don't ship in production.
 
-**Separated Airflow DB.** Added a dedicated `airflow-db` Postgres service in docker-compose. Airflow's 50+ metadata tables no longer clutter the application database. Airflow still connects to the app DB for DAG operations via the `pubmed_postgres` connection.
+**Separated Airflow DB.** Added a dedicated `airflow-db` Postgres service in docker-compose. Airflow's 50+ metadata tables no longer clutter the application database. Airflow still connects to the app DB for DAG operations via the `pubmed_postgres` connection. Cleaned up the 48 leftover Airflow tables from the app DB.
+
+**Airflow DAG verified.** Triggered the DAG through Airflow CLI. Task execution works correctly: `get_ingestion_state` reads from app DB, `fetch_abstracts` calls PubMed API with retry logic, `load_to_postgres` upserts results. All 5 category tasks run in parallel. Rate limiting kicks in when both the scheduled and manual runs fire simultaneously (10 concurrent PubMed API calls), but the retry mechanism handles it.

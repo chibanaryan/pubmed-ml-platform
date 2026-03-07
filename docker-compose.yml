@@ -58,6 +58,7 @@ services:
         condition: service_healthy
     command: >
       bash -c "
+        airflow db init &&
         airflow db migrate &&
         airflow connections add pubmed_postgres --conn-type postgres --conn-host postgres --conn-port 5432 --conn-login pubmed --conn-password pubmed --conn-schema pubmed || true &&
         airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com || true &&
