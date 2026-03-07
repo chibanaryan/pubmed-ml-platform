@@ -1,5 +1,4 @@
-# Build stage: install dependencies
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -8,16 +7,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml .
-RUN pip install --no-cache-dir --prefix=/install ".[all]"
 
-# Runtime stage: slim image with only what's needed
-FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY --from=builder /install /usr/local
+# Install CPU-only PyTorch first, then the rest of the deps.
+# The second pip install sees torch is already satisfied and skips re-downloading CUDA torch.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir ".[all]"
 
 COPY . .
+
+# Pre-download the default model so it's cached in the image
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
 EXPOSE 8000
 

@@ -16,6 +16,7 @@ Usage:
 """
 
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -25,7 +26,7 @@ from mcp.types import TextContent, Tool
 
 logger = logging.getLogger(__name__)
 
-API_BASE_URL = "http://localhost:8000"
+API_BASE_URL = os.environ.get("PUBMED_API_URL", "https://pubmed-search.fly.dev")
 
 server = Server("pubmed-search")
 

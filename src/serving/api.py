@@ -47,12 +47,14 @@ _metrics = {
 
 
 class SearchRequest(BaseModel):
-    query: str = Field(..., min_length=1, max_length=1000)
-    top_k: int = Field(default=10, ge=1, le=100)
-    min_date: date | None = None
-    max_date: date | None = None
-    mesh_filter: list[str] | None = None
-    model_name: str = DEFAULT_MODEL
+    model_config = {"json_schema_extra": {"examples": [{"query": "does creatine help with muscle recovery", "top_k": 5}]}}
+
+    query: str = Field(..., min_length=1, max_length=1000, description="Natural language search query")
+    top_k: int = Field(default=10, ge=1, le=100, description="Number of results to return")
+    min_date: date | None = Field(default=None, description="Filter: earliest publication date (optional)")
+    max_date: date | None = Field(default=None, description="Filter: latest publication date (optional)")
+    mesh_filter: list[str] | None = Field(default=None, description="Filter: MeSH terms to match (optional)")
+    model_name: str = Field(default=DEFAULT_MODEL, description="Embedding model to use (optional)")
 
 
 class PaperResult(BaseModel):
@@ -91,10 +93,8 @@ def _get_model(model_name: str) -> SentenceTransformer:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _conn
-    logger.info(f"Loading default model {DEFAULT_MODEL}...")
-    _models[DEFAULT_MODEL] = SentenceTransformer(DEFAULT_MODEL)
     _conn = psycopg2.connect(DB_URL)
-    logger.info("Ready.")
+    logger.info("DB connected. Model will load on first request.")
     yield
     if _conn:
         _conn.close()

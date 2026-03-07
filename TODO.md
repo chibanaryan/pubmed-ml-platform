@@ -22,3 +22,18 @@
 ## Remaining
 
 - [ ] **Add `.dockerignore`.** Exclude `.venv`, `.git`, `__pycache__`, etc. from Docker build context.
+
+## PyTorch / Model Training
+
+- [ ] **Fine-tune MiniLM on PubMed abstracts.** Use the 40K abstracts as a contrastive learning dataset. Papers sharing MeSH terms are positive pairs, random papers are negatives. Write the training loop in PyTorch with `MultipleNegativesRankingLoss`. Compare NDCG before/after fine-tuning.
+- [ ] **Train a cross-encoder re-ranker.** Bi-encoders (what we use now) are fast but approximate. A cross-encoder takes (query, document) pairs and scores them jointly, which is more accurate but too slow to run on all 40K papers. Use it as a second stage: bi-encoder retrieves top-50, cross-encoder re-ranks to top-10. Train on MeSH-derived relevance labels.
+- [ ] **ONNX export + quantization.** Export the embedding model to ONNX, then quantize to INT8. Benchmark inference latency and measure any NDCG degradation. Goal: cut per-query encoding time without hurting retrieval quality.
+- [ ] **Distill PubMedBERT into a smaller model.** Use PubMedBERT (768-dim) as a teacher to train a smaller student model (384-dim or 256-dim) that captures domain knowledge in fewer dimensions. Requires writing a distillation loss (KL divergence on similarity distributions).
+- [ ] **Custom embedding model from scratch.** Initialize from `bert-base-uncased`, train a sentence embedding model on PubMed data using in-batch negatives. Full control over tokenizer, pooling strategy, and loss function. Compare against MiniLM to see what domain-specific pretraining buys you.
+
+## Infrastructure
+
+- [ ] **Grafana dashboard.** Wire up the `/metrics` endpoint to Prometheus + Grafana. Track request latency p50/p95, error rate, model load times, and embedding count growth over time.
+- [ ] **Model registry with MLflow.** Register embedding models as versioned artifacts. Add a promotion workflow (staging → production) so model swaps don't require a code deploy.
+- [ ] **Async DB connections.** Replace psycopg2 with asyncpg to match FastAPI's async model. Add connection pooling.
+- [ ] **A/B testing for models.** Route a percentage of traffic to a new model, compare NDCG and latency in production. Log which model served each request.
