@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "pubmed-search": {
+      "command": "/Users/rchibana/Development/pubmed-ml-platform/.venv/bin/python",
+      "args": ["-m", "src.mcp.server"],
+      "cwd": "/Users/rchibana/Development/pubmed-ml-platform"
+    }
+  }
+}
