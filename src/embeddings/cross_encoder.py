@@ -30,7 +30,6 @@ from pathlib import Path
 import numpy as np
 import psycopg2
 import psycopg2.extras
-import torch
 from sentence_transformers import InputExample, SentenceTransformer
 from sentence_transformers.cross_encoder import CrossEncoder
 from torch.utils.data import DataLoader, Dataset

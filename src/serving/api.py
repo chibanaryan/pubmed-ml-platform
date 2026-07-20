@@ -331,11 +331,6 @@ async def health():
 
 @app.get("/metrics")
 async def metrics():
-    avg_latency = (
-        _metrics["latency_sum_ms"] / _metrics["latency_count"]
-        if _metrics["latency_count"] > 0
-        else 0
-    )
     lines = [
         "# HELP pubmed_requests_total Total number of API requests.",
         "# TYPE pubmed_requests_total counter",

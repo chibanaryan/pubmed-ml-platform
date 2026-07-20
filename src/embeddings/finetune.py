@@ -14,7 +14,6 @@ Usage:
 import argparse
 import json
 import logging
-import os
 import random
 from collections import defaultdict
 from datetime import datetime
@@ -191,7 +190,7 @@ if __name__ == "__main__":
     pairs = generate_pairs(papers, mesh_index, max_pairs=args.max_pairs, seed=args.seed)
     conn.close()
 
-    logger.info(f"Pair examples:")
+    logger.info("Pair examples:")
     for p in pairs[:3]:
         logger.info(f"  A: {p.texts[0][:80]}...")
         logger.info(f"  B: {p.texts[1][:80]}...")
