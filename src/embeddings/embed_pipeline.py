@@ -17,6 +17,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from typing import Any
 
 import mlflow
 import numpy as np
@@ -28,7 +29,7 @@ from sentence_transformers import SentenceTransformer
 logger = logging.getLogger(__name__)
 
 # Models to evaluate
-MODELS = {
+MODELS: dict[str, dict[str, Any]] = {
     "minilm": {
         "name": "all-MiniLM-L6-v2",
         "dim": 384,
@@ -43,7 +44,7 @@ MODELS = {
 
 # Hand-curated evaluation queries and expected relevant PMIDs.
 # Fill these in with real PMIDs once you've ingested data.
-EVAL_QUERIES = [
+EVAL_QUERIES: list[dict[str, Any]] = [
     {
         "query": "effects of creatine supplementation on muscle recovery",
         "category": "nutrition",

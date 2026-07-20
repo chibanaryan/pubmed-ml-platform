@@ -38,7 +38,8 @@ def list_models(client: MlflowClient):
             alias_str = ""
             if mv.aliases:
                 alias_str = f" [{', '.join(mv.aliases)}]"
-            print(f"  Version {mv.version}: {mv.current_stage}{alias_str} (run={mv.run_id[:8]})")
+            run_id = mv.run_id[:8] if mv.run_id else "unknown"
+            print(f"  Version {mv.version}: {mv.current_stage}{alias_str} (run={run_id})")
 
 
 def promote_model(client: MlflowClient, model_name: str, version: int):
