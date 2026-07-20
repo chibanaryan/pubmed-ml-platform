@@ -16,13 +16,16 @@ pip install -e ".[all]"          # installs mlflow, mcp, and dev extras
 make test                        # python -m pytest tests/ -v
 python -m pytest tests/test_api.py -v                 # single file
 python -m pytest tests/test_api.py::test_name -v      # single test
-make lint                        # ruff check src/ tests/ dags/
+make lint                        # ruff check src/ tests/ dags/ loadtest/
+mypy src/                        # type check (training CLIs exempt via pyproject overrides)
 
 # Local stack
 make up / make down              # docker compose up -d / down
 make logs                        # tail all service logs
 make ingest                      # load papers from PubMed into Postgres
 make embed / make compare / make evaluate   # embedding pipeline (runs inside api container)
+make eval-gate                   # fail if NDCG@5 < MIN_NDCG (default 0.80)
+make loadtest                    # locust headless run against localhost:8000 (stack must be up)
 ```
 
 Service URLs after `make up`: API :8000, MLflow :5001 (remapped — port 5000 conflicts with macOS AirPlay), Airflow :8080 (admin/admin), Grafana :3000 (admin/admin), Prometheus :9090.

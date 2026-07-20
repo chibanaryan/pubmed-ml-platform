@@ -1,5 +1,21 @@
 # Dev Log
 
+## 2026-07-20 — Production hardening (Tier 1 for ML-infra portfolio)
+
+### What changed
+
+**NDCG eval gate.** `evaluate.py` gained `--min-ndcg`: exits 1 if any evaluated model's mean NDCG@5 falls below the threshold. `make eval-gate` (default MIN_NDCG=0.80) runs it against the local stack; `.github/workflows/eval-gate.yml` is an on-demand (workflow_dispatch) CI job that runs it against a DB via the `EVAL_DATABASE_URL` secret — push CI can't run it since there's no embedded corpus in CI.
+
+**CI/CD.** CI now runs mypy, pytest with coverage (uploaded as artifact), and a Docker build job with GHA layer caching that pushes `ghcr.io/<repo>:latest` + `:sha` on main. mypy is tiered: serving/ingestion/mcp checked with `check_untyped_defs`, the five torch-heavy training CLIs exempt (`ignore_errors`) — annotating around torch/sentence-transformers stubs isn't worth it. Fixed real issues it caught: `MODELS`/`EVAL_QUERIES` inferring as `object`, nullable `mv.run_id` in registry, nullable pool in the API.
+
+**Observability rewrite.** Replaced the hand-rolled `_metrics` dict with `prometheus_client`: labeled request/error Counters (per-endpoint via HTTP middleware — `errors_total` was previously defined but never incremented; now 5xx and unhandled exceptions count), a per-model latency Histogram (enables `histogram_quantile` p95), models-loaded Gauge via `set_function`. `/metrics` serves `generate_latest()`. `/ab-results` keeps a small typed in-memory dict. JSON structured logging (`LOG_FORMAT=json`, default). Prometheus alert rules in `monitoring/alerts.yml` (APIDown, HighErrorRate >5%, HighSearchLatencyP95 >500ms), mounted in compose. Grafana dashboard queries updated for the labeled metric shapes.
+
+**Load testing.** `loadtest/locustfile.py` — weighted mix of /search, /paper, /similar, /health; PMIDs harvested from search responses so reads hit real ids. `make loadtest` runs headless (20 users, 60s). Not yet run against the stack (was down); numbers TBD.
+
+**Tests 28 → 49.** New: embed_pipeline (batching, normalization, upsert SQL), registry (list/promote/load with mocked MlflowClient), MCP server (httpx.MockTransport — formatting, top_k clamping, 404 and connect-error paths). Coverage on serving/mcp/ingestion/registry now 67–79%; training CLIs intentionally untested.
+
+
+
 ## 2026-03-06 — Initial build
 
 ### What got built
