@@ -9,6 +9,7 @@ license = {text = "MIT"}
 dependencies = [
     "requests>=2.31",
     "asyncpg>=0.29",
+    "psycopg2-binary>=2.9",  # sync DB access for training/embedding scripts; the API uses asyncpg
     "sentence-transformers>=3.0",
     "torch>=2.2",
     "numpy>=1.26",
