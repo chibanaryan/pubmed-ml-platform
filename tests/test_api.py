@@ -110,18 +110,30 @@ class TestMetricsEndpoint:
     def test_metrics_tracks_requests(self, client):
         test_client, mock_conn, mock_model = client
         import numpy as np
-        import src.serving.api as api_module
-
-        # Reset metrics
-        api_module._metrics["requests_total"] = 0
-        api_module._metrics["requests_by_endpoint"] = {}
+        from prometheus_client import REGISTRY
 
         mock_model.encode.return_value = np.zeros(384)
         mock_conn.fetch = AsyncMock(return_value=[])
 
+        before = REGISTRY.get_sample_value("pubmed_requests_total", {"endpoint": "/search"}) or 0
         test_client.post("/search", json={"query": "test"})
+        after = REGISTRY.get_sample_value("pubmed_requests_total", {"endpoint": "/search"})
+        assert after == before + 1
+
         resp = test_client.get("/metrics")
-        assert 'pubmed_endpoint_requests_total{endpoint="search"} 1' in resp.text
+        assert 'pubmed_requests_total{endpoint="/search"}' in resp.text
+
+    def test_metrics_tracks_errors(self, client):
+        test_client, mock_conn, _ = client
+        from prometheus_client import REGISTRY
+
+        mock_conn.fetchval = AsyncMock(side_effect=RuntimeError("db down"))
+
+        before = REGISTRY.get_sample_value("pubmed_errors_total", {"endpoint": "/health"}) or 0
+        resp = test_client.get("/health")
+        assert resp.status_code == 503
+        after = REGISTRY.get_sample_value("pubmed_errors_total", {"endpoint": "/health"})
+        assert after == before + 1
 
 
 class TestPaperEndpoint:

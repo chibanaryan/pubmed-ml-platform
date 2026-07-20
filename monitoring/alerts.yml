@@ -1,0 +1,32 @@
+groups:
+  - name: pubmed-api
+    rules:
+      - alert: APIDown
+        expr: up{job="pubmed-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PubMed API is down"
+          description: "Prometheus cannot scrape the API /metrics endpoint."
+
+      - alert: HighErrorRate
+        expr: >
+          sum(rate(pubmed_errors_total[5m])) / sum(rate(pubmed_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API error rate above 5%"
+          description: "More than 5% of requests errored over the last 5 minutes."
+
+      - alert: HighSearchLatencyP95
+        expr: >
+          histogram_quantile(0.95,
+            sum by (le) (rate(pubmed_search_latency_seconds_bucket[5m]))) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Search p95 latency above 500ms"
+          description: "95th percentile search latency exceeded 500ms for 5 minutes."

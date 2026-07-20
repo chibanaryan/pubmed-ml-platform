@@ -13,7 +13,7 @@
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "targets": [
         {
-          "expr": "rate(pubmed_requests_total[1m])",
+          "expr": "sum(rate(pubmed_requests_total[1m]))",
           "legendFormat": "total"
         }
       ],
@@ -31,7 +31,7 @@
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "targets": [
         {
-          "expr": "rate(pubmed_endpoint_requests_total[1m])",
+          "expr": "rate(pubmed_requests_total[1m])",
           "legendFormat": "{{endpoint}}"
         }
       ],
@@ -49,7 +49,7 @@
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "targets": [
         {
-          "expr": "rate(pubmed_search_latency_seconds_sum[1m]) / rate(pubmed_search_latency_seconds_count[1m])",
+          "expr": "sum(rate(pubmed_search_latency_seconds_sum[1m])) / sum(rate(pubmed_search_latency_seconds_count[1m]))",
           "legendFormat": "avg latency"
         }
       ],
@@ -67,7 +67,7 @@
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "targets": [
         {
-          "expr": "rate(pubmed_errors_total[1m])",
+          "expr": "sum(rate(pubmed_errors_total[1m]))",
           "legendFormat": "errors/s"
         }
       ],
@@ -101,7 +101,7 @@
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "targets": [
         {
-          "expr": "pubmed_requests_total",
+          "expr": "sum(pubmed_requests_total)",
           "legendFormat": "requests"
         }
       ],
@@ -116,7 +116,7 @@
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "targets": [
         {
-          "expr": "pubmed_errors_total",
+          "expr": "sum(pubmed_errors_total)",
           "legendFormat": "errors"
         }
       ],
@@ -134,7 +134,7 @@
       "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
       "targets": [
         {
-          "expr": "pubmed_search_latency_seconds_count",
+          "expr": "sum(pubmed_search_latency_seconds_count)",
           "legendFormat": "searches"
         }
       ],
