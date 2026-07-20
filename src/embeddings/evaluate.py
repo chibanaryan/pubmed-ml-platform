@@ -13,7 +13,9 @@ Usage:
 import argparse
 import json
 import logging
+import sys
 import time
+from typing import Any
 
 import numpy as np
 import psycopg2
@@ -22,7 +24,7 @@ from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
-MODELS = {
+MODELS: dict[str, dict[str, Any]] = {
     "minilm": {"name": "all-MiniLM-L6-v2", "dim": 384},
     "pubmedbert": {
         "name": "pritamdeka/PubMedBERT-mnli-snli-scinli-scitail-mednli-stsb",
@@ -32,7 +34,7 @@ MODELS = {
 
 # Graded relevance: 3 = highly relevant, 2 = relevant, 1 = somewhat relevant, 0 = irrelevant
 # MeSH terms serve as the grading signal since we don't have manual annotations.
-EVAL_QUERIES = [
+EVAL_QUERIES: list[dict[str, Any]] = [
     {
         "query": "effects of creatine supplementation on muscle recovery",
         "high_relevance_mesh": ["Creatine", "Dietary Supplements"],
@@ -235,6 +237,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("--mlflow-uri", default=None, help="MLflow tracking URI")
     parser.add_argument("--k", type=int, default=10, help="Top-k for retrieval")
+    parser.add_argument(
+        "--min-ndcg",
+        type=float,
+        default=None,
+        help="Quality gate: exit 1 if any evaluated model's mean NDCG@5 falls below this",
+    )
     args = parser.parse_args()
 
     conn = psycopg2.connect(args.db_url)
@@ -284,3 +292,15 @@ if __name__ == "__main__":
             print(row)
 
     conn.close()
+
+    if args.min_ndcg is not None:
+        failures = {
+            key: r["metrics"]["mean_ndcg_5"]
+            for key, r in all_results.items()
+            if r["metrics"]["mean_ndcg_5"] < args.min_ndcg
+        }
+        if failures:
+            for key, score in failures.items():
+                print(f"GATE FAILED: {key} NDCG@5 {score:.4f} < threshold {args.min_ndcg}")
+            sys.exit(1)
+        print(f"GATE PASSED: all models >= NDCG@5 {args.min_ndcg}")

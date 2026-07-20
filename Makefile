@@ -1,4 +1,6 @@
-.PHONY: up down test lint ingest embed compare evaluate logs
+.PHONY: up down test lint ingest embed compare evaluate eval-gate loadtest logs
+
+MIN_NDCG ?= 0.80
 
 up:
 	docker compose up -d
@@ -10,7 +12,7 @@ test:
 	python -m pytest tests/ -v
 
 lint:
-	ruff check src/ tests/ dags/
+	ruff check src/ tests/ dags/ loadtest/
 
 ingest:
 	docker compose exec api python -c "\
@@ -51,6 +53,18 @@ evaluate:
 		--compare \
 		--db-url postgresql://pubmed:pubmed@postgres:5432/pubmed \
 		--mlflow-uri http://mlflow:5000
+
+eval-gate:
+	docker compose exec api python -m src.embeddings.evaluate \
+		--model minilm \
+		--db-url postgresql://pubmed:pubmed@postgres:5432/pubmed \
+		--min-ndcg $(MIN_NDCG)
+
+loadtest:
+	locust -f loadtest/locustfile.py --headless \
+		--host http://localhost:8000 \
+		--users 20 --spawn-rate 5 --run-time 60s \
+		--only-summary
 
 logs:
 	docker compose logs -f --tail=50

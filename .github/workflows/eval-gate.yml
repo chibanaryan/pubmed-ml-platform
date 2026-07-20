@@ -1,0 +1,46 @@
+name: Eval Gate
+
+# On-demand model quality gate. Requires a populated database (papers +
+# embeddings), so it can't run on plain push CI — trigger it manually with a
+# DB URL stored in the EVAL_DATABASE_URL secret (e.g. the Neon instance).
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Model key to evaluate"
+        required: false
+        default: "minilm"
+        type: choice
+        options: [minilm, pubmedbert]
+      min_ndcg:
+        description: "Minimum acceptable mean NDCG@5"
+        required: false
+        default: "0.80"
+
+jobs:
+  eval-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[all]"
+
+      - name: Run NDCG eval gate
+        env:
+          EVAL_DATABASE_URL: ${{ secrets.EVAL_DATABASE_URL }}
+        run: |
+          if [ -z "$EVAL_DATABASE_URL" ]; then
+            echo "EVAL_DATABASE_URL secret is not set" >&2
+            exit 1
+          fi
+          python -m src.embeddings.evaluate \
+            --model "${{ inputs.model }}" \
+            --db-url "$EVAL_DATABASE_URL" \
+            --min-ndcg "${{ inputs.min_ndcg }}"
