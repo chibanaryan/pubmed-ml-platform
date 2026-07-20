@@ -85,7 +85,7 @@ python -m pytest tests/ -v
 - **GitHub Actions CI**: ruff lint, mypy type check, pytest with coverage, Docker image build (pushed to GHCR on main)
 - **Eval gate**: `make eval-gate` (or the on-demand `Eval Gate` workflow) fails if mean NDCG@5 drops below a threshold — a regression gate for model changes
 - **Observability**: `prometheus_client` metrics (labeled request/error counters, per-model latency histograms), JSON structured logs (`LOG_FORMAT=json`), Prometheus alert rules (`monitoring/alerts.yml`: APIDown, HighErrorRate, HighSearchLatencyP95)
-- **Load testing**: `make loadtest` runs locust headless (20 users, 60s) against the local API and prints p50/p95/p99 per endpoint; warm the model with one search first
+- **Load testing**: `make loadtest` runs locust headless (20 users, 60s) against the local API; warm the model with one search first. Measured locally (40K papers, Apple Silicon, Docker): 2,019 requests, 0 failures, 34 req/s sustained — `/search` p50 15ms / p95 71ms / p99 460ms, `/paper` p50 4ms / p95 29ms, `/similar` p50 7ms / p95 46ms
 
 ## Design Decisions
 

@@ -1,5 +1,13 @@
 # Dev Log
 
+## 2026-07-20 — Live verification: found a real search-breaking bug
+
+**Search was broken with asyncpg — and mocked tests couldn't see it.** First live `/search` after bringing the stack up returned 500: `asyncpg.exceptions.DataError: invalid input for query argument $1 ... (expected str, got list)`. asyncpg has no codec for the pgvector `vector` type, so the query embedding must be passed as pgvector's text form (`"[0.1,0.2,...]"`), not a Python list. psycopg2 tolerated the list, so this broke silently in the psycopg2→asyncpg migration — and all 28 tests kept passing because they mock `conn.fetch`. Search has likely been broken in the deployed API since that migration. Fixed by serializing the embedding to the text form; added a regression test asserting the param is a string. Lesson: mocked tests validate request/response shape, not the DB contract — at least one smoke test against a real Postgres would have caught this instantly.
+
+**Load test results** (40K papers, Apple Silicon, Docker, 20 users / 60s): 2,019 requests, 0 failures, 34 req/s sustained. `/search` p50 15ms / p95 71ms / p99 460ms; `/paper` p50 4ms; `/similar` p50 7ms. The p99 tail is model-encode contention — all 20 users share one in-process SentenceTransformer.
+
+**Eval gate wired to Neon.** `EVAL_DATABASE_URL` secret set on the repo (Neon still holds 39,731 papers with MiniLM embeddings); the on-demand Eval Gate workflow runs the NDCG check against it from the Actions tab.
+
 ## 2026-07-20 — Production hardening (Tier 1 for ML-infra portfolio)
 
 ### What changed
