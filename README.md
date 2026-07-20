@@ -82,7 +82,10 @@ python -m pytest tests/ -v
 - **pgvector** with HNSW expression indexes for vector similarity search
 - **CPU-only Docker image** with PyTorch installed from the CPU index (641MB vs 3.5GB with CUDA)
 - **Fly.io** for production API hosting, **Neon** for managed Postgres with pgvector
-- **GitHub Actions CI** with ruff linting and pytest
+- **GitHub Actions CI**: ruff lint, mypy type check, pytest with coverage, Docker image build (pushed to GHCR on main)
+- **Eval gate**: `make eval-gate` (or the on-demand `Eval Gate` workflow) fails if mean NDCG@5 drops below a threshold — a regression gate for model changes
+- **Observability**: `prometheus_client` metrics (labeled request/error counters, per-model latency histograms), JSON structured logs (`LOG_FORMAT=json`), Prometheus alert rules (`monitoring/alerts.yml`: APIDown, HighErrorRate, HighSearchLatencyP95)
+- **Load testing**: `make loadtest` runs locust headless (20 users, 60s) against the local API and prints p50/p95/p99 per endpoint; warm the model with one search first
 
 ## Design Decisions
 
