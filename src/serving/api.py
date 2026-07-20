@@ -215,7 +215,9 @@ async def search(req: SearchRequest):
         actual_model_name = AB_TEST_MODEL
 
     model = _get_model(actual_model_name)
-    query_embedding = model.encode(req.query, normalize_embeddings=True).tolist()
+    # pgvector text format — asyncpg has no codec for the vector type, so the
+    # parameter must be passed as a string, not a list
+    query_embedding = "[" + ",".join(map(str, model.encode(req.query, normalize_embeddings=True).tolist())) + "]"
 
     # Build query with optional filters
     conditions = ["e.model_name = $2"]

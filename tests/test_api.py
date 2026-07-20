@@ -85,6 +85,10 @@ class TestSearchEndpoint:
         resp = test_client.post("/search", json={"query": "creatine muscle"})
         assert resp.status_code == 200
         data = resp.json()
+        # asyncpg has no pgvector codec: the embedding param must be the vector's
+        # text form, not a list (regression test for a live-only DataError)
+        query_vec_param = mock_conn.fetch.call_args[0][1]
+        assert isinstance(query_vec_param, str) and query_vec_param.startswith("[")
         assert data["total"] == 1
         assert data["results"][0]["pmid"] == 12345
         assert data["results"][0]["similarity"] == 0.95
