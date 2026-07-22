@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.routing import Route
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel, Field
 
@@ -440,13 +441,78 @@ async def metrics():
 
 
 if MCP_HTTP:
-    # Mounted as raw ASGI, not a FastAPI route: the transport streams and needs
-    # the untouched scope/receive/send.
-    async def _mcp_asgi(scope, receive, send):
-        assert _mcp_manager is not None
-        await _mcp_manager.handle_request(scope, receive, send)
+    MCP_BROWSER_HELP = """<!doctype html>
+<html><head><meta charset="utf-8"><title>PubMed Search — MCP endpoint</title>
+<style>
+ body{font:16px/1.6 system-ui,sans-serif;max-width:42rem;margin:4rem auto;padding:0 1.5rem;color:#2c2418;background:#faf7f2}
+ code,pre{font-family:ui-monospace,monospace;font-size:.9rem}
+ pre{background:#f0ece4;padding:.9rem 1rem;border-radius:6px;overflow-x:auto}
+ a{color:#a8502f}
+ @media(prefers-color-scheme:dark){body{background:#12100e;color:#e8e3da}pre{background:#1e1b18}a{color:#e08b63}}
+</style></head><body>
+<h1>This is an MCP endpoint</h1>
+<p>You've reached it in a browser, which is why there's nothing to look at. It speaks the
+<a href="https://modelcontextprotocol.io">Model Context Protocol</a> over streamable HTTP,
+so it's meant to be added to an AI assistant as a tool server, not visited.</p>
+<p>In Claude Code:</p>
+<pre>claude mcp add --transport http pubmed \\
+  https://pubmed-search-683d.onrender.com/mcp</pre>
+<p>Or in a client that takes JSON config:</p>
+<pre>{
+  "mcpServers": {
+    "pubmed": {
+      "type": "http",
+      "url": "https://pubmed-search-683d.onrender.com/mcp"
+    }
+  }
+}</pre>
+<p>It provides three tools over ~40,000 PubMed abstracts:
+<code>search_papers</code>, <code>get_paper</code>, and <code>find_similar</code>.</p>
+<p>Prefer plain HTTP? The same data is at
+<a href="/docs">/docs</a>. Source is
+<a href="https://github.com/chibanaryan/pubmed-ml-platform">on GitHub</a>.</p>
+</body></html>"""
 
-    app.mount("/mcp", _mcp_asgi)
+    def _wants_html(scope) -> bool:
+        """A browser, not an MCP client: the protocol requires text/event-stream."""
+        if scope.get("method") != "GET":
+            return False
+        accept = b""
+        for name, value in scope.get("headers", []):
+            if name.lower() == b"accept":
+                accept = value.lower()
+                break
+        return b"text/html" in accept and b"text/event-stream" not in accept
+
+    class _MCPEndpoint:
+        """Raw ASGI: the transport streams and needs the untouched scope.
+
+        A callable object rather than a function so Starlette routes it as an
+        ASGI app, and a Route rather than a Mount so that `/mcp` is matched
+        exactly. Mounting would 307-redirect `/mcp` to `/mcp/`, which costs a
+        round trip on every call and breaks clients that don't follow
+        redirects on POST.
+        """
+
+        async def __call__(self, scope, receive, send):
+            assert _mcp_manager is not None
+            if _wants_html(scope):
+                body = MCP_BROWSER_HELP.encode()
+                await send({
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [
+                        (b"content-type", b"text/html; charset=utf-8"),
+                        (b"content-length", str(len(body)).encode()),
+                    ],
+                })
+                await send({"type": "http.response.body", "body": body})
+                return
+            await _mcp_manager.handle_request(scope, receive, send)
+
+    app.router.routes.append(
+        Route("/mcp", endpoint=_MCPEndpoint(), methods=["GET", "POST", "DELETE"])
+    )
 
 
 @app.get("/ab-results")
