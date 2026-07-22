@@ -26,7 +26,15 @@ class OnnxEmbedder:
     """Duck-types SentenceTransformer.encode() for the query path."""
 
     def __init__(self, model_path: str, tokenizer_path: str):
-        self.session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+        # Single-threaded inference: on fractional-vCPU containers (Render free
+        # tier is 0.1 CPU) onnxruntime's default per-core thread pool thrashes
+        # against the cgroup throttle and multiplies latency.
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = 1
+        opts.inter_op_num_threads = 1
+        self.session = ort.InferenceSession(
+            model_path, sess_options=opts, providers=["CPUExecutionProvider"]
+        )
         self.tokenizer = Tokenizer.from_file(tokenizer_path)
         self.tokenizer.enable_truncation(MAX_LENGTH)
 
