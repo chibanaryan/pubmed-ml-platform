@@ -130,7 +130,8 @@ pubmed-ml-platform/
 │   │   ├── onnx_export.py        # ONNX export + INT8 quantization
 │   │   └── registry.py           # MLflow model registry management
 │   ├── serving/
-│   │   └── api.py                # FastAPI application
+│   │   ├── api.py                # FastAPI application
+│   │   └── onnx_embedder.py      # torch-free INT8 query encoder (production)
 │   └── mcp/
 │       └── server.py             # MCP server wrapping the search API
 ├── db/
@@ -143,11 +144,23 @@ pubmed-ml-platform/
 ├── tests/
 │   ├── test_pubmed_client.py
 │   ├── test_api.py
-│   └── test_evaluate.py
-├── .github/workflows/ci.yml
+│   ├── test_evaluate.py
+│   ├── test_embed_pipeline.py
+│   ├── test_registry.py
+│   └── test_mcp_server.py
+├── loadtest/
+│   └── locustfile.py             # Locust load test harness
+├── monitoring/                   # Prometheus config + alerts, Grafana dashboards
+├── docs/
+│   ├── portfolio-dossier.md      # Full project history and trade-offs
+│   └── pubmed-platform-diagrams.md
+├── .github/workflows/
+│   ├── ci.yml                    # Lint, types, tests, Docker image
+│   └── eval-gate.yml             # On-demand NDCG regression gate
 ├── docker-compose.yml
 ├── Dockerfile
-├── fly.toml
+├── render.yaml                   # Production deploy (free tier, ONNX backend)
+├── requirements-render.txt       # Slim serving deps, no torch
 ├── Makefile
 ├── pyproject.toml
 ├── DEVLOG.md
