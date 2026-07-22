@@ -1,5 +1,17 @@
 # Dev Log
 
+## 2026-07-22 — The fix that "didn't work" (because it never deployed)
+
+Live `/search` on Render was 1–2.2s warm despite ~70ms locally. Isolated with existing endpoints: `/paper` ~100ms and `/similar` ~65ms (vector search, no model) → the encode stage was the bottleneck. Diagnosis: onnxruntime's default per-core thread pool thrashing against Render's 0.1-vCPU cgroup throttle. Pinned `intra_op_num_threads=1`, pushed… and latency didn't move.
+
+The real lesson: **the fix never deployed.** Render services created via API from a public repo get no GitHub webhook, so `autoDeploy` silently does nothing — the service was still running the first build. Two pushes (threading fix, timing instrumentation) never reached production, and a deploy-watch loop keyed on the new commit would have waited forever. After triggering the deploy explicitly via the Render API (`POST /v1/services/{id}/deploys` — now the documented process):
+
+- Warm `/search`: **75–99ms** (was 1–2.2s) — the threading fix was correct all along
+- Stage timings from the new structured logs: encode 30–60ms, DB 37–50ms
+- Takeaway pair: (1) fractional-vCPU containers need single-threaded inference; (2) before concluding a fix failed, verify the running build actually contains it.
+
+Also: CI broke on the same day from mypy version drift — CI's newer mypy flagged a `type: ignore` comment that local mypy required. Replaced the conditional-import ignore with a `TYPE_CHECKING`-gated import, which both versions accept.
+
 ## 2026-07-22 — Free-tier redeploy: INT8 ONNX becomes the production serving path
 
 **Fly app dead, HF Docker Spaces no longer free.** The Fly trial ended (app suspended, card required to revive). Hugging Face now requires PRO for Docker/Gradio Spaces (402 on create). The only genuinely free, no-card host left: Render's free tier — 512MB RAM, which torch + sentence-transformers cannot fit.
