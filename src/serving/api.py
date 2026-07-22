@@ -17,6 +17,7 @@ import random
 import time
 from contextlib import asynccontextmanager
 from datetime import date
+from typing import TYPE_CHECKING
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -24,12 +25,12 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, ge
 from pydantic import BaseModel, Field
 
 # "onnx" serves the INT8 MiniLM via onnxruntime without ever importing torch —
-# required to fit free-tier memory limits (see src/serving/onnx_embedder.py)
+# required to fit free-tier memory limits (see src/serving/onnx_embedder.py).
+# In onnx mode SentenceTransformer is undefined at runtime; the only code that
+# references it is unreachable on that backend.
 SERVING_BACKEND = os.environ.get("SERVING_BACKEND", "torch")
-if SERVING_BACKEND == "torch":
+if TYPE_CHECKING or SERVING_BACKEND == "torch":
     from sentence_transformers import SentenceTransformer
-else:
-    SentenceTransformer = None  # type: ignore[assignment,misc]
 
 
 class JsonFormatter(logging.Formatter):

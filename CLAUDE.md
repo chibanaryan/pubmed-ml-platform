@@ -51,4 +51,4 @@ DB URLs differ by context: `postgresql://pubmed:pubmed@localhost:5432/pubmed` fr
 
 **Model artifacts** under `models/` (fine-tuned, distilled, ONNX variants) are gitignored and exist only locally; embeddings for variant models are stored under distinct `model_name` values (e.g. `minilm-pubmed-ft`).
 
-**Production:** API on Fly.io (`fly.toml`), Postgres on Neon. Neon's free tier is 512MB — storing multiple full-corpus embedding sets exceeds it, and deleted rows don't free space until auto-vacuum catches up (see DEVLOG).
+**Production:** API on Render free tier (`render.yaml`, https://pubmed-search-683d.onrender.com) serving the INT8 ONNX model (`SERVING_BACKEND=onnx`, artifacts at HF Hub `chibanaryan/minilm-pubmed-onnx`) — torch doesn't fit the 512MB instance. Postgres on Neon. The old Fly.io deploy is dead (trial ended); `fly.toml` removed. Neon's free tier is 512MB — storing multiple full-corpus embedding sets exceeds it, and deleted rows don't free space until auto-vacuum catches up (see DEVLOG).

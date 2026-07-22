@@ -81,7 +81,7 @@ python -m pytest tests/ -v
 - **Kubernetes manifests** for deployment (namespace, PVCs, deployments with health probes, services)
 - **pgvector** with HNSW expression indexes for vector similarity search
 - **CPU-only Docker image** with PyTorch installed from the CPU index (641MB vs 3.5GB with CUDA)
-- **Fly.io** for production API hosting, **Neon** for managed Postgres with pgvector
+- **Render free tier** for production API hosting (`render.yaml`) — live at https://pubmed-search-683d.onrender.com (first request after idle takes ~1min to wake). Serves the **INT8 ONNX model** (`SERVING_BACKEND=onnx`, artifacts on the [HF Hub](https://huggingface.co/chibanaryan/minilm-pubmed-onnx)) because torch doesn't fit in 512MB; **Neon** for managed Postgres with pgvector
 - **GitHub Actions CI**: ruff lint, mypy type check, pytest with coverage, Docker image build (pushed to GHCR on main)
 - **Eval gate**: `make eval-gate` (or the on-demand `Eval Gate` workflow) fails if mean NDCG@5 drops below a threshold — a regression gate for model changes
 - **Observability**: `prometheus_client` metrics (labeled request/error counters, per-model latency histograms), JSON structured logs (`LOG_FORMAT=json`), Prometheus alert rules (`monitoring/alerts.yml`: APIDown, HighErrorRate, HighSearchLatencyP95)
@@ -109,7 +109,7 @@ python -m pytest tests/ -v
 | Storage       | PostgreSQL + pgvector                  |
 | Serving       | FastAPI, Uvicorn                       |
 | LLM Tools     | Model Context Protocol (MCP)           |
-| Deployment    | Docker, Fly.io, Neon Postgres          |
+| Deployment    | Docker, Render, Neon Postgres, ONNX Runtime |
 | Language      | Python 3.11+                           |
 
 ## Project Structure

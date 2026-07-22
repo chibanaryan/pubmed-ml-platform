@@ -26,7 +26,7 @@ from mcp.types import TextContent, Tool
 
 logger = logging.getLogger(__name__)
 
-API_BASE_URL = os.environ.get("PUBMED_API_URL", "https://pubmed-search.fly.dev")
+API_BASE_URL = os.environ.get("PUBMED_API_URL", "https://pubmed-search-683d.onrender.com")
 
 server = Server("pubmed-search")
 
