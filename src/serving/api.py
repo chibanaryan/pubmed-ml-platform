@@ -22,7 +22,14 @@ import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel, Field
-from sentence_transformers import SentenceTransformer
+
+# "onnx" serves the INT8 MiniLM via onnxruntime without ever importing torch —
+# required to fit free-tier memory limits (see src/serving/onnx_embedder.py)
+SERVING_BACKEND = os.environ.get("SERVING_BACKEND", "torch")
+if SERVING_BACKEND == "torch":
+    from sentence_transformers import SentenceTransformer
+else:
+    SentenceTransformer = None  # type: ignore[assignment,misc]
 
 
 class JsonFormatter(logging.Formatter):
@@ -124,7 +131,8 @@ class SearchResponse(BaseModel):
 
 # --- App ---
 
-_models: dict[str, SentenceTransformer] = {}
+# SentenceTransformer or OnnxEmbedder — both expose .encode(text, normalize_embeddings=)
+_models: dict[str, object] = {}
 _pool: asyncpg.Pool | None = None
 
 MODELS_LOADED.set_function(lambda: float(len(_models)))
@@ -135,10 +143,20 @@ def _db_pool() -> asyncpg.Pool:
     return _pool
 
 
-def _get_model(model_name: str) -> SentenceTransformer:
+def _get_model(model_name: str):
     if model_name not in MODEL_DIMS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {model_name}")
     if model_name not in _models:
+        if SERVING_BACKEND == "onnx":
+            if model_name != DEFAULT_MODEL:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Model {model_name} is not available on the onnx serving backend",
+                )
+            from src.serving.onnx_embedder import load_onnx_embedder
+
+            _models[model_name] = load_onnx_embedder()
+            return _models[model_name]
         # Try loading from MLflow registry first (production alias)
         registry_name = MLFLOW_REGISTRY_NAMES.get(model_name)
         if MLFLOW_URI and registry_name:

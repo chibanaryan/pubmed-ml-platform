@@ -1,0 +1,12 @@
+# Slim serving deps for the 512MB free-tier deploy (SERVING_BACKEND=onnx).
+# No torch/sentence-transformers: queries are embedded with the INT8 ONNX
+# model via onnxruntime. Full dev/training deps live in pyproject.toml.
+fastapi>=0.110
+uvicorn>=0.29
+asyncpg>=0.29
+pydantic>=2.6
+prometheus-client>=0.20
+numpy>=1.26
+onnxruntime>=1.18
+tokenizers>=0.19
+huggingface_hub>=0.23

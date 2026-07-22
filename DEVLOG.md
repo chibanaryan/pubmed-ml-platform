@@ -1,5 +1,13 @@
 # Dev Log
 
+## 2026-07-22 — Free-tier redeploy: INT8 ONNX becomes the production serving path
+
+**Fly app dead, HF Docker Spaces no longer free.** The Fly trial ended (app suspended, card required to revive). Hugging Face now requires PRO for Docker/Gradio Spaces (402 on create). The only genuinely free, no-card host left: Render's free tier — 512MB RAM, which torch + sentence-transformers cannot fit.
+
+**Solution: serve the INT8 ONNX model.** The March quantization experiment became the production path. New `src/serving/onnx_embedder.py` embeds queries with onnxruntime + bare `tokenizers` (manual mean-pool + L2 norm, mirroring the sentence-transformers head that isn't in the ONNX graph). `SERVING_BACKEND=onnx` skips importing torch entirely. Model artifacts (INT8 ONNX 22MB + tokenizer) uploaded to the HF Hub at `chibanaryan/minilm-pubmed-onnx` (model repos are still free) and downloaded at first request.
+
+**Verified in a clean venv with only `requirements-render.txt`: 211MB RSS**, warm search ~70ms against Neon, identical top-3 results to the torch backend. `render.yaml` blueprint deploys it (region ohio, next to Neon us-east-1; DATABASE_URL set in dashboard). Trade-offs: free tier spins down after ~15min idle (~1min cold start), PubMedBERT unavailable on this backend (400), NDCG@5 -0.017 from quantization.
+
 ## 2026-07-20 — Live verification: found a real search-breaking bug
 
 **Search was broken with asyncpg — and mocked tests couldn't see it.** First live `/search` after bringing the stack up returned 500: `asyncpg.exceptions.DataError: invalid input for query argument $1 ... (expected str, got list)`. asyncpg has no codec for the pgvector `vector` type, so the query embedding must be passed as pgvector's text form (`"[0.1,0.2,...]"`), not a Python list. psycopg2 tolerated the list, so this broke silently in the psycopg2→asyncpg migration — and all 28 tests kept passing because they mock `conn.fetch`. Search has likely been broken in the deployed API since that migration. Fixed by serializing the embedding to the text form; added a regression test asserting the param is a string. Lesson: mocked tests validate request/response shape, not the DB contract — at least one smoke test against a real Postgres would have caught this instantly.

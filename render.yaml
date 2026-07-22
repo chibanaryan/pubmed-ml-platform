@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: pubmed-search
+    runtime: python
+    plan: free
+    region: ohio  # closest to Neon (us-east-1)
+    buildCommand: pip install -r requirements-render.txt
+    startCommand: uvicorn src.serving.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: SERVING_BACKEND
+        value: onnx
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        sync: false  # set in the Render dashboard (Neon connection string)
