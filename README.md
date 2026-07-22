@@ -73,7 +73,11 @@ python -m pytest tests/ -v
 ### 4. MCP Server
 - Wraps the FastAPI endpoints as MCP tools for LLM integration
 - Three tools: `search_papers`, `get_paper`, `find_similar`
-- Configured via `.mcp.json` for Claude Code; runs over stdio transport
+- **Hosted, no install required** — add the live server to any MCP client:
+  ```bash
+  claude mcp add --transport http pubmed https://pubmed-search-683d.onrender.com/mcp
+  ```
+- Two transports: stdio for local use (`.mcp.json`), and streamable HTTP mounted at `/mcp` on the API (`MCP_HTTP=1`), stateless so it survives the free tier's idle shutdowns
 - Formats results for LLM consumption with truncated abstracts, author lists, and relevance scores
 
 ### 5. Infrastructure
