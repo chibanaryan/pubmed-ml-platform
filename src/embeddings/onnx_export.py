@@ -53,10 +53,15 @@ def export_to_onnx(model_name: str = MODEL_NAME, output_path: Path = ONNX_PATH):
     transformer = model[0]
     auto_model = transformer.auto_model.cpu()
 
-    # Create dummy input
-    dummy_text = "This is a test sentence for ONNX export."
+    # Trace with a batch of two. A single-row dummy input freezes batch=1 into
+    # the *output* shapes even though dynamic_axes asks otherwise, and the model
+    # then rejects any batch but 1 at inference time.
+    dummy_texts = [
+        "This is a test sentence for ONNX export.",
+        "A second sentence, so the batch axis is traced as genuinely variable.",
+    ]
     encoded = tokenizer(
-        dummy_text,
+        dummy_texts,
         padding="max_length",
         max_length=128,
         truncation=True,
@@ -70,11 +75,14 @@ def export_to_onnx(model_name: str = MODEL_NAME, output_path: Path = ONNX_PATH):
             (encoded["input_ids"], encoded["attention_mask"]),
             str(output_path),
             input_names=["input_ids", "attention_mask"],
-            output_names=["last_hidden_state"],
+            # BERT returns two outputs. Naming only the first leaves the second
+            # auto-named and outside dynamic_axes.
+            output_names=["last_hidden_state", "pooler_output"],
             dynamic_axes={
                 "input_ids": {0: "batch_size", 1: "sequence"},
                 "attention_mask": {0: "batch_size", 1: "sequence"},
                 "last_hidden_state": {0: "batch_size", 1: "sequence"},
+                "pooler_output": {0: "batch_size"},
             },
             opset_version=14,
         )

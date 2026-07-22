@@ -1,5 +1,6 @@
 """Tests for the PubMed E-utilities API client."""
 
+import json
 from datetime import date
 from unittest.mock import MagicMock, patch
 from xml.etree import ElementTree
@@ -63,6 +64,7 @@ class TestPubMedClient:
         client = PubMedClient()
         mock_resp = MagicMock()
         mock_resp.json.return_value = SAMPLE_SEARCH_RESPONSE
+        mock_resp.text = json.dumps(SAMPLE_SEARCH_RESPONSE)
 
         with patch.object(client, "_get", return_value=mock_resp):
             pmids, total = client.search("test query")
@@ -74,6 +76,7 @@ class TestPubMedClient:
         client = PubMedClient()
         mock_resp = MagicMock()
         mock_resp.json.return_value = SAMPLE_SEARCH_RESPONSE
+        mock_resp.text = json.dumps(SAMPLE_SEARCH_RESPONSE)
 
         with patch.object(client, "_get", return_value=mock_resp) as mock_get:
             client.search(
@@ -105,6 +108,39 @@ class TestPubMedClient:
         assert a.mesh_terms == ["Creatine", "Muscle, Skeletal"]
         assert a.keywords == ["supplementation"]
         assert a.doi == "10.1234/test"
+
+    def test_get_retries_dropped_connections(self):
+        """A backfill makes hundreds of requests; one dropped connection
+        shouldn't end the run."""
+        import requests as _requests
+
+        client = PubMedClient(requests_per_second=1000.0)
+        ok = MagicMock(status_code=200)
+        with patch.object(
+            client.session,
+            "get",
+            side_effect=[_requests.exceptions.ChunkedEncodingError("ended prematurely"), ok],
+        ) as mock_get, patch("time.sleep"):
+            resp = client._get("efetch.fcgi", {})
+
+        assert resp is ok
+        assert mock_get.call_count == 2
+
+    def test_search_surfaces_api_error_from_a_200(self):
+        """PubMed reports errors as HTTP 200 with a raw newline inside the JSON,
+        which strict parsing rejects with a message that hides the real cause."""
+        body = (
+            '{"header":{"type":"esearch"},"esearchresult":{"ERROR":'
+            '"Search Backend failed: Exception:\n\'retstart\' cannot be larger than 9998."}}'
+        )
+        client = PubMedClient()
+        mock_resp = MagicMock()
+        mock_resp.text = body
+        mock_resp.status_code = 200
+
+        with patch.object(client, "_get", return_value=mock_resp):
+            with pytest.raises(RuntimeError, match="cannot be larger than 9998"):
+                client.search("anything")
 
     def test_title_with_inline_markup_is_not_truncated(self):
         """PubMed italicizes species names; findtext() would stop at the <i> tag."""

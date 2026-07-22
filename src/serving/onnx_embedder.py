@@ -38,10 +38,9 @@ class OnnxEmbedder:
         self.tokenizer = Tokenizer.from_file(tokenizer_path)
         self.tokenizer.enable_truncation(MAX_LENGTH)
 
-    def encode(self, text: str, normalize_embeddings: bool = True) -> np.ndarray:
-        enc = self.tokenizer.encode(text)
-        input_ids = np.array([enc.ids], dtype=np.int64)
-        attention_mask = np.array([enc.attention_mask], dtype=np.int64)
+    def _forward(self, ids: list[list[int]], masks: list[list[int]], normalize: bool) -> np.ndarray:
+        input_ids = np.array(ids, dtype=np.int64)
+        attention_mask = np.array(masks, dtype=np.int64)
 
         hidden = self.session.run(
             ["last_hidden_state"],
@@ -52,9 +51,39 @@ class OnnxEmbedder:
         # sentence-transformers' pooling head, which isn't in the ONNX graph.
         mask = attention_mask[..., np.newaxis].astype(np.float32)
         emb = (hidden * mask).sum(axis=1) / np.clip(mask.sum(axis=1), 1e-9, None)
-        if normalize_embeddings:
+        if normalize:
             emb = emb / np.clip(np.linalg.norm(emb, axis=1, keepdims=True), 1e-9, None)
-        return emb[0]
+        return emb
+
+    def encode(self, text: str, normalize_embeddings: bool = True) -> np.ndarray:
+        enc = self.tokenizer.encode(text)
+        return self._forward([enc.ids], [enc.attention_mask], normalize_embeddings)[0]
+
+    def encode_batch(
+        self,
+        texts: list[str],
+        batch_size: int = 32,
+        normalize_embeddings: bool = True,
+    ) -> np.ndarray:
+        """Encode many documents. Padding is enabled per batch, and the
+        attention mask keeps pad tokens out of the pooled average."""
+        self.tokenizer.enable_padding()
+        try:
+            out = []
+            for i in range(0, len(texts), batch_size):
+                encs = self.tokenizer.encode_batch(texts[i : i + batch_size])
+                out.append(
+                    self._forward(
+                        [e.ids for e in encs],
+                        [e.attention_mask for e in encs],
+                        normalize_embeddings,
+                    )
+                )
+            return np.vstack(out) if out else np.empty((0, 384), dtype=np.float32)
+        finally:
+            # Single-query encoding must not pad: it would change nothing
+            # numerically but wastes compute on the serving path.
+            self.tokenizer.no_padding()
 
 
 def load_onnx_embedder() -> OnnxEmbedder:

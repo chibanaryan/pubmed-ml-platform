@@ -8,6 +8,7 @@ Rate limits: 3 requests/second without API key, 10/second with one.
 Get a free key at https://www.ncbi.nlm.nih.gov/account/settings/
 """
 
+import json
 import time
 import logging
 from dataclasses import dataclass, field
@@ -56,17 +57,43 @@ class PubMedClient:
             time.sleep(self.min_interval - elapsed)
         self.last_request_time = time.time()
 
-    def _get(self, endpoint: str, params: dict, max_retries: int = 3) -> requests.Response:
+    def _get(self, endpoint: str, params: dict, max_retries: int = 5) -> requests.Response:
+        """Fetch with backoff.
+
+        Note that throttling is per-instance: two clients in two processes will
+        each keep their own interval and together exceed the shared server-side
+        limit. Callers running in parallel must bound their own concurrency.
+        """
         if self.api_key:
             params["api_key"] = self.api_key
         url = f"{BASE_URL}/{endpoint}"
 
         for attempt in range(max_retries):
             self._throttle()
-            resp = self.session.get(url, params=params, timeout=30)
-            if resp.status_code == 429:
-                wait = 2 ** attempt * 2
-                logger.warning(f"Rate limited (429), retrying in {wait}s (attempt {attempt + 1}/{max_retries})")
+            try:
+                resp = self.session.get(url, params=params, timeout=30)
+            except requests.exceptions.RequestException as e:
+                # Dropped connections and read timeouts, which happen often
+                # enough over a few hundred requests that a run ingesting a
+                # backfill will otherwise die partway through.
+                if attempt == max_retries - 1:
+                    raise
+                wait = min(2 ** attempt * 2, 30)
+                logger.warning(
+                    f"{type(e).__name__} from {endpoint}, retrying in {wait}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
+                time.sleep(wait)
+                continue
+
+            # PubMed signals overload as 429, and sometimes as a 5xx rather than
+            # a clean rate-limit response.
+            if resp.status_code == 429 or resp.status_code >= 500:
+                wait = min(2 ** attempt * 2, 30)
+                logger.warning(
+                    f"{resp.status_code} from {endpoint}, retrying in {wait}s "
+                    f"(attempt {attempt + 1}/{max_retries})"
+                )
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
@@ -102,7 +129,20 @@ class PubMedClient:
             params["datetype"] = "pdat"
 
         resp = self._get("esearch.fcgi", params)
-        data = resp.json()["esearchresult"]
+        try:
+            # strict=False: PubMed reports its own errors as a 200 whose JSON
+            # embeds raw newlines inside a string, which strict parsing rejects
+            # with an "invalid control character" that hides the real message.
+            data = json.loads(resp.text, strict=False).get("esearchresult", {})
+        except ValueError as e:
+            raise RuntimeError(
+                f"PubMed search returned unparseable response "
+                f"({resp.status_code}, {resp.headers.get('content-type')}): "
+                f"{resp.text[:200]!r}"
+            ) from e
+
+        if "ERROR" in data:
+            raise RuntimeError(f"PubMed search error: {str(data['ERROR']).strip()}")
         pmids = [int(pid) for pid in data.get("idlist", [])]
         total = int(data.get("count", 0))
         logger.info(f"Search returned {total} total results, fetched {len(pmids)} starting at {retstart}")
