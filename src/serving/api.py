@@ -235,7 +235,9 @@ async def search(req: SearchRequest):
     model = _get_model(actual_model_name)
     # pgvector text format — asyncpg has no codec for the vector type, so the
     # parameter must be passed as a string, not a list
+    encode_start = time.time()
     query_embedding = "[" + ",".join(map(str, model.encode(req.query, normalize_embeddings=True).tolist())) + "]"
+    encode_ms = (time.time() - encode_start) * 1000
 
     # Build query with optional filters
     conditions = ["e.model_name = $2"]
@@ -272,8 +274,11 @@ async def search(req: SearchRequest):
     """
     params.append(req.top_k)
 
+    db_start = time.time()
     async with _db_pool().acquire() as conn:
         rows = await conn.fetch(sql, *params)
+    db_ms = (time.time() - db_start) * 1000
+    logger.info(f"search stages: encode_ms={encode_ms:.1f} db_ms={db_ms:.1f}")
 
     results = [
         PaperResult(
