@@ -10,3 +10,4 @@ numpy>=1.26
 onnxruntime>=1.18
 tokenizers>=0.19
 huggingface_hub>=0.23
+mcp>=1.26   # streamable-HTTP MCP transport mounted at /mcp

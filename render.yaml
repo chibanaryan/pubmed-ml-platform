@@ -10,6 +10,8 @@ services:
     envVars:
       - key: SERVING_BACKEND
         value: onnx
+      - key: MCP_HTTP
+        value: "1"
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: DATABASE_URL

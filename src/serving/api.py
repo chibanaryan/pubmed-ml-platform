@@ -77,6 +77,11 @@ MLFLOW_REGISTRY_NAMES = {
 POOL_MIN = int(os.environ.get("DB_POOL_MIN", "2"))
 POOL_MAX = int(os.environ.get("DB_POOL_MAX", "10"))
 
+# Serve the MCP tools over HTTP at /mcp so remote clients can use them without
+# cloning the repo. Stateless: this host sleeps when idle, and resuming a
+# session that outlived the process would just fail.
+MCP_HTTP = os.environ.get("MCP_HTTP", "0") == "1"
+
 # A/B testing config (set AB_TEST_MODEL to enable)
 AB_TEST_MODEL = os.environ.get("AB_TEST_MODEL", "")  # treatment model name
 AB_TEST_TRAFFIC = float(os.environ.get("AB_TEST_TRAFFIC", "0.0"))  # fraction routed to treatment (0.0-1.0)
@@ -136,6 +141,18 @@ class SearchResponse(BaseModel):
 # SentenceTransformer or OnnxEmbedder — both expose .encode(text, normalize_embeddings=)
 _models: dict[str, object] = {}
 _pool: asyncpg.Pool | None = None
+_mcp_manager = None
+
+if MCP_HTTP:
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+
+    import src.mcp.server as mcp_server
+
+    # The MCP tools reach the search endpoints over HTTP. Mounted in this same
+    # process, that call should stay on loopback rather than exiting to the
+    # public URL and back.
+    mcp_server.API_BASE_URL = f"http://127.0.0.1:{os.environ.get('PORT', '8000')}"
+    _mcp_manager = StreamableHTTPSessionManager(app=mcp_server.server, stateless=True)
 
 MODELS_LOADED.set_function(lambda: float(len(_models)))
 
@@ -181,7 +198,12 @@ async def lifespan(app: FastAPI):
     global _pool
     _pool = await asyncpg.create_pool(DB_URL, min_size=POOL_MIN, max_size=POOL_MAX)
     logger.info(f"DB pool created (min={POOL_MIN}, max={POOL_MAX}). Model will load on first request.")
-    yield
+    if _mcp_manager is None:
+        yield
+    else:
+        async with _mcp_manager.run():
+            logger.info("MCP streamable-HTTP transport mounted at /mcp")
+            yield
     if _pool:
         await _pool.close()
 
@@ -415,6 +437,16 @@ async def health():
 @app.get("/metrics")
 async def metrics():
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+if MCP_HTTP:
+    # Mounted as raw ASGI, not a FastAPI route: the transport streams and needs
+    # the untouched scope/receive/send.
+    async def _mcp_asgi(scope, receive, send):
+        assert _mcp_manager is not None
+        await _mcp_manager.handle_request(scope, receive, send)
+
+    app.mount("/mcp", _mcp_asgi)
 
 
 @app.get("/ab-results")
