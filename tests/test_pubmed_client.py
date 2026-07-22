@@ -106,6 +106,29 @@ class TestPubMedClient:
         assert a.keywords == ["supplementation"]
         assert a.doi == "10.1234/test"
 
+    def test_title_with_inline_markup_is_not_truncated(self):
+        """PubMed italicizes species names; findtext() would stop at the <i> tag."""
+        xml = """<?xml version="1.0" ?>
+        <PubmedArticleSet>
+          <PubmedArticle>
+            <MedlineCitation>
+              <PMID>41097163</PMID>
+              <Article>
+                <ArticleTitle>The Impact of <i>Weizmannia coagulans</i> BC99 on Anxiety</ArticleTitle>
+              </Article>
+            </MedlineCitation>
+          </PubmedArticle>
+        </PubmedArticleSet>"""
+
+        client = PubMedClient()
+        mock_resp = MagicMock()
+        mock_resp.text = xml
+
+        with patch.object(client, "_get", return_value=mock_resp):
+            articles = client.fetch_articles([41097163])
+
+        assert articles[0].title == "The Impact of Weizmannia coagulans BC99 on Anxiety"
+
     def test_fetch_articles_handles_missing_abstract(self):
         xml = """<?xml version="1.0" ?>
         <PubmedArticleSet>

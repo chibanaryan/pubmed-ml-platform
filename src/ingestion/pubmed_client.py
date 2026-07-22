@@ -145,8 +145,11 @@ class PubMedClient:
     def _parse_article(self, elem) -> PubMedArticle:
         pmid = int(elem.findtext(".//PMID"))
 
-        # Title
-        title = elem.findtext(".//ArticleTitle", default="")
+        # Title — itertext(), not findtext(): PubMed marks up titles with inline
+        # tags (<i> for species names, <sub>/<sup> in chemical names), and
+        # findtext() returns only the text before the first child element.
+        title_elem = elem.find(".//ArticleTitle")
+        title = "".join(title_elem.itertext()).strip() if title_elem is not None else ""
 
         # Abstract — may have multiple AbstractText elements (structured abstract)
         abstract_parts = []
