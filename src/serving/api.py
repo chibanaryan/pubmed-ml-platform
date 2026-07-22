@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from pydantic import BaseModel, Field
 
@@ -190,6 +191,14 @@ app = FastAPI(
     description="Semantic search over PubMed biomedical abstracts",
     version="0.2.0",
     lifespan=lifespan,
+)
+
+# Public read-only API; open CORS so the blog's embedded demo can call it
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
 
