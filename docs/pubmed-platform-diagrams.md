@@ -8,7 +8,7 @@ Companion to the [portfolio dossier](portfolio-dossier.md). All numbers are meas
 flowchart LR
     subgraph Ingestion
         EU[PubMed E-utilities] -->|"rate-limited,<br/>backoff on 429"| PC[pubmed_client.py]
-        AF[Airflow DAG<br/>daily, 5 parallel<br/>category tasks] --> PC
+        AF[Airflow DAG<br/>daily · fetch serialized<br/>to respect rate limit] --> PC
     end
 
     subgraph Storage["Postgres + pgvector (Neon in prod)"]
@@ -21,7 +21,7 @@ flowchart LR
     AF <-->|track progress| ST
 
     subgraph ML["Embedding & training"]
-        EP[embed_pipeline.py<br/>batched encode]
+        EP[embed_new_papers task<br/>INT8 ONNX · batched<br/>idempotent · capped]
         ML1[MLflow<br/>tracking + registry<br/>'@production' alias]
         EP --- ML1
     end
@@ -122,7 +122,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    PUSH([git push main]) --> CI["CI job<br/>ruff · mypy (tiered)<br/>49 tests + coverage"]
+    PUSH([git push main]) --> CI["CI job<br/>ruff · mypy (tiered)<br/>52 tests + coverage"]
     CI --> DK["Docker build<br/>GHA layer cache"]
     DK -->|on main| GHCR[(ghcr.io image<br/>:latest + :sha)]
 

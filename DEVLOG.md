@@ -1,5 +1,42 @@
 # Dev Log
 
+## 2026-07-22 — Closing the ingestion loop, and the five bugs that were hiding behind it
+
+### The gap
+
+The DAG ingested papers but never embedded them, so new rows were invisible to search until the embedding pipeline was run by hand. 6,781 papers (~15% of the corpus) were sitting ingested and unsearchable. A scheduled pipeline whose output never reaches the query path has given up most of what scheduling buys.
+
+### The fix
+
+New `embed_new_papers` task, downstream of all category loads, running once per DAG run rather than per category (model load is fixed cost). Design points:
+
+- **Encodes with the INT8 ONNX model**, the same one the API uses for queries. Keeps torch out of the Airflow image entirely (~1.5GB saved; the worker only needs onnxruntime + tokenizers + huggingface_hub, added via `docker/airflow.Dockerfile`), and means documents and queries are finally encoded by identical weights. Previously documents were fp32 torch and queries INT8 ONNX.
+- **Idempotent/resumable**: selects on absence of a vector, so re-running is free and a crash loses nothing.
+- **Capped** at `max_embed_per_run` (default 5,000) so a run has bounded duration; backlogs drain across runs.
+- **Storage guard** via `max_db_bytes`, off unless set. First version hardcoded 460MB (calibrated for Neon) and immediately blocked the local 593MB database. A quota belongs to the hosting plan, not the pipeline.
+
+Added `OnnxEmbedder.encode_batch()` with padding enabled per batch and restored after, since padding on the single-query serving path would waste compute.
+
+### Five pre-existing bugs surfaced by making it work end to end
+
+1. **ONNX export froze batch size at 1 on its outputs.** `dynamic_axes` named `last_hidden_state`, but the export was traced with a *single* dummy sentence and only one of BERT's two outputs was named (the pooler auto-named itself `tanh`), so outputs came out `[1, sequence, 384]`. Any batch >1 failed with a buffer shape mismatch. Invisible for four months because the API only ever encoded one query at a time. Fixed by tracing with a batch of two and naming both outputs. Re-exported, re-quantized, verified the new INT8 model produces **identical** vectors (cosine 1.000000) before replacing it on HF Hub.
+2. **Rate limiting is per client instance.** Five parallel category tasks each correctly throttled themselves to 3 req/s and collectively hit PubMed at 15 req/s. Fixed at the orchestration layer with `max_active_tis_per_dag=1` on `fetch_abstracts`, which is the only place that knows how many copies exist.
+3. **PubMed reports errors as HTTP 200 with raw newlines inside the JSON**, which strict parsing rejects as "invalid control character", hiding the actual message. Now parsed with `strict=False` and the `ERROR` field surfaced.
+4. **Unbounded pagination.** The loop capped on results collected but never on `retstart`, so a query matching 93,052 papers eventually asked past ESearch's hard ceiling ("`retstart` cannot be larger than 9998"). Bug 3 was masking this one. Now bounded, with a clear log when a category hits the ceiling.
+5. **No retry on dropped connections.** `_get` retried HTTP status codes but not exceptions raised before a response exists, so one `ProtocolError` out of ~50 requests killed a backfill. Now retries `RequestException` with capped backoff.
+
+Three regression tests added (title markup, API-error-in-a-200, dropped connection). None of these were reachable by the existing suite: each needed either a real API on the other end or a batch larger than one.
+
+### Verification
+
+Full `airflow dags test` run: **zero task failures**, 40,007 papers ingested across five categories (four were fresh 5-year backfills, each stopping at the 10,000-record ceiling). Backlog drained across successive runs to **0 unembedded**; local corpus now 70,552 papers / 68,871 embeddings (the difference is papers with no abstract, correctly skipped).
+
+**NDCG@5 = 0.8267** on the resulting mixed-precision corpus (some vectors fp32, some INT8), against the 0.83 baseline and the 0.80 CI gate. The two precisions coexist without meaningful penalty.
+
+### Note for later
+
+PubMed 429s steadily even at its documented 3 req/s. Backing the client off to ~2 req/s would likely finish faster overall by avoiding 2–8s backoff waits. Untested.
+
 ## 2026-07-22 — The fix that "didn't work" (because it never deployed)
 
 Live `/search` on Render was 1–2.2s warm despite ~70ms locally. Isolated with existing endpoints: `/paper` ~100ms and `/similar` ~65ms (vector search, no model) → the encode stage was the bottleneck. Diagnosis: onnxruntime's default per-core thread pool thrashing against Render's 0.1-vCPU cgroup throttle. Pinned `intra_op_num_threads=1`, pushed… and latency didn't move.

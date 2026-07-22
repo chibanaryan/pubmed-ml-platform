@@ -36,7 +36,15 @@ DB URLs differ by context: `postgresql://pubmed:pubmed@localhost:5432/pubmed` fr
 
 ## Architecture
 
-**Data flow:** the Airflow DAG (`dags/pubmed_ingest.py`) pulls abstracts from PubMed E-utilities via `src/ingestion/pubmed_client.py` (rate-limited, exponential backoff on 429s) into the `papers` table, tracking incremental state per MeSH category in `ingestion_state`. `src/embeddings/embed_pipeline.py` generates embeddings into the `embeddings` table and logs runs/models to MLflow. `src/serving/api.py` serves search; `src/mcp/server.py` wraps the API as MCP tools (stdio transport, configured in `.mcp.json`).
+**Data flow:** the Airflow DAG (`dags/pubmed_ingest.py`) pulls abstracts from PubMed E-utilities via `src/ingestion/pubmed_client.py` into the `papers` table, tracking incremental state per MeSH category in `ingestion_state`, then its final task `embed_new_papers` writes vectors into `embeddings` so ingested papers are searchable without a manual step. `src/serving/api.py` serves search; `src/mcp/server.py` wraps the API as MCP tools (stdio, plus streamable HTTP mounted at `/mcp` when `MCP_HTTP=1`).
+
+`src/embeddings/embed_pipeline.py` is the standalone (torch) embedder, used when embedding a *specific* model on demand — model comparisons, re-embedding after fine-tuning — and it logs runs/models to MLflow. The DAG task deliberately does not use it: it calls `src/serving/onnx_embedder.py` instead so the Airflow image needs no torch, and so documents and queries are encoded by identical weights.
+
+**DAG gotchas.**
+- `fetch_abstracts` is pinned to `max_active_tis_per_dag=1`. The client's rate limiter is per-instance, so parallel category tasks each throttle correctly and collectively exceed PubMed's limit.
+- Pagination must stop at `retstart > 9998` (ESearch's hard ceiling). Past it PubMed returns HTTP 200 with an error payload containing raw newlines, which strict JSON parsing reports as "invalid control character" rather than the real message.
+- Airflow Variables: `max_embed_per_run` (default 5,000), `max_db_bytes` (0 = guard off; set it only for quota-limited targets like Neon).
+- The embedding task is idempotent — it selects on absence of a vector, so re-running is always safe.
 
 **Untyped vector column (load-bearing design decision).** `embeddings.embedding` is `vector` with no dimension so MiniLM (384-dim) and PubMedBERT (768-dim) coexist in one table, discriminated by `model_name`. Consequences:
 - Plain vector indexes don't work; HNSW *expression* indexes on casts are used instead, created manually after data load (see comments in `db/init.sql`).

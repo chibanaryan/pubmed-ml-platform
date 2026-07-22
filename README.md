@@ -42,10 +42,15 @@ python -m pytest tests/ -v
 ## Components
 
 ### 1. Data Ingestion (Airflow)
-- Airflow DAG queries PubMed's E-utilities API for abstracts across five MeSH categories: nutrition, exercise physiology, psychology, behavioral science, and bioethics
-- Incremental ingestion tracks the last-fetched date per category and pulls new publications daily
-- Rate-limited client with exponential backoff on 429s
-- Handles PubMed's structured XML responses, including multi-part abstracts and text-format month fields
+- Daily DAG queries PubMed's E-utilities API for abstracts across five MeSH categories: nutrition, exercise physiology, psychology, behavioral science, and bioethics
+- Incremental ingestion tracks the last-fetched date per category; pagination stops at ESearch's hard ceiling of 10,000 retrievable records per query
+- **The DAG embeds what it ingests** (`embed_new_papers`), so new papers are searchable without a manual step. Runs once per DAG run after all categories load, using the same INT8 ONNX model the API encodes queries with — no torch in the Airflow image (see `docker/airflow.Dockerfile`)
+  - Idempotent and resumable: selects papers by *absence* of a vector, so re-running is free
+  - Capped per run via the `max_embed_per_run` Airflow Variable (default 5,000); backlogs drain over successive runs
+  - Optional storage guard via `max_db_bytes` (off unless set) for quota-limited targets like Neon's free tier
+- Fetches are bounded to one concurrent task: the client's rate limiter is per-instance, so parallel category tasks would otherwise exceed PubMed's limit collectively
+- Retries 429s, 5xx, and dropped connections with capped exponential backoff
+- Handles PubMed's structured XML responses, including multi-part abstracts, inline markup in titles, and text-format month fields
 
 ### 2. Embedding Pipeline (PyTorch + HuggingFace + MLflow)
 - Generates vector embeddings for ingested abstracts using HuggingFace sentence transformers

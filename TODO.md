@@ -1,35 +1,34 @@
 # TODO
 
-## Completed
+Completed work lives in `DEVLOG.md` (chronological, with results and gotchas) and
+`docs/portfolio-dossier.md` (thematic summary). This file is only what's next.
 
-- [x] **Re-run model comparison at full corpus size.** Both models at 9,693 papers. MiniLM wins on MeSH overlap (0.357 vs 0.340) and latency (7ms vs 10ms).
-- [x] **Create vector indexes.** HNSW expression indexes on casted vectors. Latency dropped from ~80ms to ~3.9ms.
-- [x] **Get MCP server working from Claude Code.** Venv + `.mcp.json` configured, tested locally against running API.
-- [x] **Architecture blog post / README writeup.** Design Decisions section covering pgvector, untyped vectors, MeSH evaluation, Airflow, and MCP.
-- [x] **GitHub Actions CI.** Lint with ruff, run tests on push.
-- [x] **Add Makefile.** Targets: up, down, test, lint, ingest, embed, compare, evaluate, logs.
-- [x] **Retry logic in pubmed_client.** Exponential backoff on 429s.
-- [x] **Scale to ~40K papers.** 39,731 papers with MiniLM embeddings.
-- [x] **NDCG evaluation harness.** 8 queries with graded relevance scoring (0-3). Mean NDCG@5: 0.83, NDCG@10: 0.91.
+## Next
 
-- [x] **PubMedBERT as selectable model in the API.** On-demand model loading. Default model loads at startup, PubMedBERT loads on first request.
-- [x] **Prometheus metrics endpoint.** `/metrics` endpoint with request counts, latency stats, models loaded, per-endpoint breakdown.
-- [x] **Docker image optimization.** Multi-stage build separating build deps from runtime.
-- [x] **Separate Airflow DB from application DB.** Dedicated `airflow-db` service in docker-compose, Airflow tables no longer clutter the app schema.
+- [ ] **Run Airflow somewhere other than a laptop.** The DAG ingests and embeds correctly, but
+      only advances when the local stack is up, so the hosted corpus is a fixed snapshot.
+      Set `max_db_bytes` when pointing it at Neon (131MB headroom, ~13K papers).
+- [ ] **Deploy the k8s manifests to a real cluster.** `k8s/` has never been applied. kind or k3s
+      first, then HPA, Ingress, and either Helm or Kustomize.
+- [ ] **Infrastructure as code.** Render service and Neon project are click/API-provisioned;
+      no Terraform anywhere.
+- [ ] **One GPU / distributed training run.** Every model so far was trained on a laptop.
 
-- [x] **Airflow DAG testing.** Triggered via CLI. Task pipeline works end to end. Rate limiting from concurrent runs handled by retry mechanism.
+## Worth doing, smaller
 
-## PyTorch / Model Training
+- [ ] Split query encoding into its own service. It shares a process with request serving,
+      which is what puts the p99 at 460ms under load.
+- [ ] Bulk-load embeddings with `COPY` instead of row-by-row inserts (23 min → seconds
+      when re-embedding a full corpus over the network).
+- [ ] Try 2 req/s against PubMed. It 429s steadily at its documented 3 req/s, so backing off
+      may finish faster by avoiding 2–8s retry waits.
+- [ ] Hand-label ~50 query/document pairs. The MeSH proxy is good enough to pick a model,
+      not to judge re-ranking quality.
+- [ ] Secrets hygiene: `k8s/postgres.yaml` carries plaintext dev credentials, and compose
+      defaults to `pubmed:pubmed`.
 
-- [x] **Fine-tune MiniLM on PubMed abstracts.** Contrastive learning with 100K MeSH-based pairs using `MultipleNegativesRankingLoss`. NDCG@5 improved from 0.83 to 0.86, with biggest gains on previously weak queries (sleep deprivation +0.19, HIIT +0.13).
-- [x] **Train a cross-encoder re-ranker.** Two-stage pipeline: bi-encoder retrieves top-50, cross-encoder re-ranks to top-10. Trained on 20K MeSH-derived examples. NDCG@5 improved from 0.83 to 0.92 (+0.09). HIIT query went from 0.59 to 1.00. Adds ~272ms latency per query.
-- [x] **ONNX export + quantization.** Exported MiniLM to ONNX, quantized to INT8. 5.3x speedup (4.4ms → 0.84ms per query) with only 0.017 NDCG@5 degradation. ONNX FP32 is lossless.
-- [x] **Distill PubMedBERT into a smaller model.** KL divergence on pairwise similarity distributions, temperature=2.0, 3 epochs on 40K texts. Net result: NDCG@5 0.812 vs 0.828 baseline (-0.016). Per-query gains on HIIT (+0.19) and AI ethics (+0.08) but regression on sleep deprivation (-0.32). Transferred some domain knowledge but not enough to beat contrastive fine-tuning.
-- [x] **Custom embedding model from scratch.** Initialized from `bert-base-uncased` with mean pooling, trained on 10K MeSH pairs using MultipleNegativesRankingLoss. 1 epoch, ~8 min. Training converged (loss 1.17) but NDCG evaluation blocked by Neon 512MB storage limit (768-dim embeddings too large to store alongside existing 40K MiniLM embeddings).
+## Deliberately not doing
 
-## Infrastructure
-
-- [x] **Grafana dashboard.** Prometheus scrapes `/metrics` every 15s, Grafana auto-provisions with a pre-built dashboard showing request rate, latency, errors, and model status. Grafana at :3000, Prometheus at :9090.
-- [x] **Model registry with MLflow.** Embed pipeline registers models as versioned artifacts after training. Registry management script (`registry.py`) supports listing models, promoting versions via aliases (`@production`), and loading from the registry. API falls back to HuggingFace if no registry model is available.
-- [x] **Async DB connections.** Replaced psycopg2 with asyncpg. Connection pool (min 2, max 10) created at startup via lifespan. All endpoints use `pool.acquire()` async context manager. Tests updated with asyncpg-compatible mocks.
-- [x] **A/B testing for models.** Set `AB_TEST_MODEL` and `AB_TEST_TRAFFIC` env vars to route a percentage of default-model traffic to a treatment model. Each search response includes `model_used`. Per-model request counts and latency tracked in `/metrics` and summarized at `/ab-results`.
+- **Streaming ingestion.** Daily batch matches how PubMed publishes; Kafka would be costume.
+- **A dedicated vector database.** pgvector holds at this scale; revisit past ~1M vectors.
+- **Feature store.** No feature reuse across models to justify one.

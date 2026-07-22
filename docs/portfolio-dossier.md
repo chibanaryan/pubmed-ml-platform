@@ -95,7 +95,7 @@ Load/serving numbers: local stack 34 req/s @ 20 users, 0 failures, `/search` p50
 | Packaging | Docker multi-stage (CPU-only torch), docker-compose (7 services), K8s manifests (written, undeployed) | Local stack + deploy |
 | Hosting | Render (free tier), formerly Fly.io; HF Hub for model artifacts | $0/month production |
 | LLM integration | MCP (stdio + SSE), httpx | Search as LLM tools |
-| Testing | pytest, AsyncMock, httpx MockTransport, 49 tests | No-Docker unit suite |
+| Testing | pytest, AsyncMock, httpx MockTransport, 52 tests | No-Docker unit suite |
 
 ## 7. Skills → ML-infra role mapping
 
@@ -137,7 +137,9 @@ Load/serving numbers: local stack 34 req/s @ 20 users, 0 failures, `/search` p50
 - **API**: Render free tier (Ohio), `SERVING_BACKEND=onnx`, 211MB RSS, warm `/search` 75–99ms, sleeps after ~15min idle (~1min wake). Deploys triggered via Render API (webhook gap documented).
 - **DB**: Neon free tier (us-east-1), 39,731 papers + MiniLM embeddings, HNSW-indexed.
 - **Model artifacts**: HF Hub `chibanaryan/minilm-pubmed-onnx` (INT8 + tokenizer).
-- **CI**: green — ruff, mypy, 49 tests + coverage, Docker→GHCR; eval gate on demand (last run: 0.8275 ≥ 0.80).
+- **CI**: green — ruff, mypy, 52 tests + coverage, Docker→GHCR; eval gate on demand (last run: 0.8275 ≥ 0.80).
+- **Pipeline**: DAG ingests *and* embeds, so ingested papers are searchable without a manual step. Verified: full run, zero task failures, 40,007 papers across five categories; backlog drained to 0 unembedded; NDCG@5 0.8267 on the mixed fp32/INT8 corpus.
+- **MCP**: hosted at `/mcp` (streamable HTTP, stateless); browsers get a setup page instead of a protocol error.
 - **Cost: $0/month** across Render + Neon + HF Hub + GitHub.
 
 ## 11. Honest gaps & roadmap (Tier 2/3)
